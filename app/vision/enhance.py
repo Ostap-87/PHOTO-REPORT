@@ -35,16 +35,18 @@ CLAHE_BLEND = 0.6        # CLAHE подмешиваем частично — б�
 WB_STRENGTH = 0.8        # доля коррекции баланса белого (1.0 — полный серый мир, часто перебор)
 WB_MAX_GAIN = 1.6
 # --- шум и резкость ---
-DENOISE_AFTER_GAIN = 2.0 # осветление теней сильнее этого множителя -> шумоподавление
-SHARPEN_AMOUNT = 0.9
-SHARPEN_SIGMA_1024 = 1.2 # радиус размытия маски на масштабе 1024 px (пересчитывается под размер)
+DENOISE_AFTER_GAIN = 3.0 # тени усилены сильнее этого (экспозиция × растяжение) -> шумоподавление
+DENOISE_NOISE = 3.0      # ...или ожидаемый шум после усиления (σ × усиление) выше этого
+SHARPEN_AMOUNT = 1.2     # подобрано по SSIM на размытых копиях (σ=1.2 px: 0.889->0.925, σ=2: 0.802->0.836)
+SHARPEN_SIGMA_1024 = 1.5 # радиус маски на масштабе 1024 px; для больших фото — пропорционально, до 4 px
 SHARPEN_THRESHOLD = 2.0  # не усиливать мелочь слабее 2 уровней (шум)
 # --- мягкая общая коррекция (mode="all") ---
-ALL_LEVELS_STRENGTH = 0.5
-ALL_CLAHE_BLEND = 0.25
-ALL_WB_STRENGTH = 0.4
-ALL_WB_MIN_CAST = 3.0
-ALL_SHARPEN_AMOUNT = 0.3
+ALL_LEVELS_STRENGTH = 0.3
+ALL_CLAHE_BLEND = 0.15
+ALL_WB_STRENGTH = 0.3
+ALL_WB_MIN_CAST = 6.0
+ALL_SHARPEN_AMOUNT = 0.35
+ALL_SHARPEN_SIGMA = 1.0
 
 
 def _lut_apply(rgb: np.ndarray, lut: np.ndarray) -> np.ndarray:
@@ -77,20 +79,21 @@ def exposure(rgb: np.ndarray, dark: bool, over: bool) -> tuple[np.ndarray, float
         shadow_gain = float(y[26] / max(x[26], 1e-6))
         return _lut_apply(rgb, y * 255.0), shadow_gain
     if over and med > OVER_TARGET:
-        gamma = float(np.clip(np.log(OVER_TARGET) / np.log(max(med, 1e-3)), 1.0, MAX_GAMMA))
+        gamma = float(np.clip(np.log(OVER_TARGET) / np.log(min(max(med, 1e-3), 0.995)), 1.0, MAX_GAMMA))
         return _lut_apply(rgb, (x ** gamma) * 255.0), 1.0
     return rgb, 1.0
 
 
-def levels(rgb: np.ndarray, strength: float = 1.0) -> np.ndarray:
-    """Растяжение яркости по перцентилям (одинаково для всех каналов — цвета не плывут)."""
+def levels(rgb: np.ndarray, strength: float = 1.0) -> tuple[np.ndarray, float]:
+    """Растяжение яркости по перцентилям (одинаково для всех каналов — цвета не плывут).
+    Возвращает (rgb, во сколько раз растянуты перепады)."""
     _, lo, hi = _luma_stats(rgb)
     if hi - lo < 0.05:
-        return rgb
+        return rgb, 1.0
     x = np.arange(256, dtype=np.float32) / 255.0
     y = np.clip((x - lo) / (hi - lo), 0, 1)
     y = x + (y - x) * strength
-    return _lut_apply(rgb, y * 255.0)
+    return _lut_apply(rgb, y * 255.0), 1.0 + (1.0 / (hi - lo) - 1.0) * strength
 
 
 def clahe(rgb: np.ndarray, clip: float = CLAHE_CLIP, blend: float = CLAHE_BLEND) -> np.ndarray:
@@ -137,12 +140,13 @@ def denoise(rgb: np.ndarray, strength: float = 1.0) -> np.ndarray:
     return cv2.cvtColor(cv2.merge([L, a, b]), cv2.COLOR_LAB2RGB)
 
 
-def sharpen(rgb: np.ndarray, amount: float = SHARPEN_AMOUNT) -> np.ndarray:
+def sharpen(rgb: np.ndarray, amount: float = SHARPEN_AMOUNT, sigma_1024: float | None = None) -> np.ndarray:
     """Нерезкое маскирование по каналу L; радиус — под разрешение фото."""
     lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)
     L = lab[..., 0].astype(np.float32)
     h, w = rgb.shape[:2]
-    sigma = SHARPEN_SIGMA_1024 * max(1.0, max(h, w) / 1024.0) ** 0.5
+    s1024 = SHARPEN_SIGMA_1024 if sigma_1024 is None else sigma_1024
+    sigma = float(np.clip(s1024 * max(h, w) / 1024.0, 0.8, 4.0))
     blur = cv2.GaussianBlur(L, (0, 0), sigma)
     detail = L - blur
     detail = np.where(np.abs(detail) < SHARPEN_THRESHOLD, 0.0, detail)
@@ -174,34 +178,36 @@ def enhance(rgb: np.ndarray, quality: dict | None = None, mode: str = "auto") ->
         out = white_balance(out, ALL_WB_STRENGTH)
         applied.append("white_balance")
 
-    shadow_gain = 1.0
+    amp = 1.0  # во сколько раз усилены перепады в тенях (растёт и шум)
     dark, over = "dark" in flags, "overexposed" in flags
     if dark or over:
-        out, shadow_gain = exposure(out, dark, over)
+        out, g = exposure(out, dark, over)
+        amp *= g
         applied.append("exposure")
 
     if "low_contrast" in flags:
-        out = levels(out, 1.0)
+        out, g = levels(out, 1.0)
+        amp *= g
         out = clahe(out, CLAHE_CLIP, CLAHE_BLEND)
         applied += ["levels", "clahe"]
     elif dark:
         out = clahe(out, CLAHE_CLIP, CLAHE_BLEND * 0.6)  # после осветления — немного локального контраста
         applied.append("clahe")
     elif mode == "all":
-        out = levels(out, ALL_LEVELS_STRENGTH)
+        out, _ = levels(out, ALL_LEVELS_STRENGTH)
         out = clahe(out, 1.5, ALL_CLAHE_BLEND)
         applied += ["levels", "clahe"]
 
-    noisy = float(q.get("noise", 0)) * shadow_gain
-    if shadow_gain >= DENOISE_AFTER_GAIN or noisy > Q.NOISY:
-        out = denoise(out, 1.0 if shadow_gain < 3 else 1.5)
+    noise_after = float(q.get("noise", 0)) * amp
+    if amp >= DENOISE_AFTER_GAIN or (amp >= 1.5 and noise_after > DENOISE_NOISE):
+        out = denoise(out, 1.0 if noise_after < 2 * DENOISE_NOISE else 1.5)
         applied.append("denoise")
 
     if "blurry" in flags and "very_blurry" not in flags:
         out = sharpen(out, SHARPEN_AMOUNT)
         applied.append("sharpen")
     elif mode == "all" and "denoise" not in applied:
-        out = sharpen(out, ALL_SHARPEN_AMOUNT)
+        out = sharpen(out, ALL_SHARPEN_AMOUNT, ALL_SHARPEN_SIGMA)
         applied.append("sharpen")
 
     return out, applied

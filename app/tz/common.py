@@ -283,7 +283,14 @@ def first_sentence(text: str) -> str:
 
 
 def make_title(text: str, limit: int = 120) -> str:
-    """Короткое название пункта: первое предложение, не длиннее limit символов."""
+    """Короткое название пункта: первое предложение, не длиннее limit символов, с заглавной буквы."""
+    title = _make_title(text, limit)
+    if title[:1].islower():
+        title = title[:1].upper() + title[1:]
+    return title
+
+
+def _make_title(text: str, limit: int) -> str:
     t = one_line(text)
     if not t:
         return ""

@@ -158,7 +158,7 @@ def set_tz(prj: dict, parsed: dict, rel_file: str) -> dict:
     prj["items"] = items
     prj["tz"] = {"file": rel_file, "kind": parsed.get("kind"), "title": parsed.get("title") or "",
                  "html": "tz/source.html" if parsed.get("html") else "", "pages": len(parsed.get("pages") or []),
-                 "loaded": _now()}
+                 "warnings": list(parsed.get("warnings") or []), "loaded": _now()}
     return prj
 
 

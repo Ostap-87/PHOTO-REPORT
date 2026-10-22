@@ -15,7 +15,8 @@ from PIL import Image
 def _jpeg(color, size=(320, 240), dark=False) -> bytes:
     arr = np.zeros((size[1], size[0], 3), dtype=np.uint8)
     arr[:] = color
-    arr[size[1] // 3: size[1] // 2, size[0] // 4: size[0] // 2] = (255 - np.array(color)) // 2
+    shift = int(sum(color)) % 60                      # у каждого фото свой узор — разные файлы
+    arr[size[1] // 3: size[1] // 2, size[0] // 4 + shift: size[0] // 2 + shift] = (255 - np.array(color)) // 2
     if dark:
         arr = (arr * 0.15).astype(np.uint8)
     buf = io.BytesIO()

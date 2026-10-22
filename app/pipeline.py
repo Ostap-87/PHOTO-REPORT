@@ -216,17 +216,20 @@ class Pipeline:
         job = self.job(pid)
         try:
             fields, emb = process_photo(pid, phid, reprocess=reprocess)
-            with job.lock:
-                job.pending.setdefault(phid, {}).update(fields)
-                if emb is not None:
-                    job.pending_emb[phid] = emb
-                job.done += 1
+        except KeyError:                       # проект или фото удалены, пока фото ждало очереди
+            fields, emb = None, None
         except Exception as exc:  # noqa: BLE001
-            with job.lock:
-                job.pending.setdefault(phid, {}).update(status="error", error=str(exc)[:300])
-                job.errors += 1
-                job.done += 1
+            fields, emb = {"status": "error", "error": str(exc)[:300]}, None
             traceback.print_exc()
+        try:
+            with job.lock:
+                if fields is not None:
+                    job.pending.setdefault(phid, {}).update(fields)
+                    if emb is not None:
+                        job.pending_emb[phid] = emb
+                    if fields.get("status") == "error":
+                        job.errors += 1
+                job.done += 1
         finally:
             with job.lock:
                 job.active -= 1
@@ -243,13 +246,19 @@ class Pipeline:
             pend, job.pending = job.pending, {}
             pemb, job.pending_emb = job.pending_emb, {}
         if pemb:
-            EMB.put(pid, pemb)
+            try:
+                EMB.put(pid, pemb)
+            except (KeyError, OSError):
+                pass
         if not pend:
             return
-        with store.edit(pid) as prj:
-            for p in prj.get("photos", []):
-                if p["id"] in pend:
-                    p.update(pend[p["id"]])
+        try:
+            with store.edit(pid) as prj:
+                for p in prj.get("photos", []):
+                    if p["id"] in pend:
+                        p.update(pend[p["id"]])
+        except KeyError:                       # проект удалён во время обработки
+            return
 
     def _after_batch(self, pid: str) -> None:
         job = self.job(pid)
@@ -353,13 +362,15 @@ def classify_project(pid: str, params: dict | None = None) -> dict:
         e = EMB.lookup(pid, conf) if conf else None
         if e is not None:
             examples[it["id"]] = e
-    todo = [p["id"] for p in prj.get("photos", []) if p.get("status") == "ready" and not p.get("confirmed")]
-    embs = EMB.lookup(pid, todo)
-    if embs is None:
+    todo = [p["id"] for p in prj.get("photos", []) if p.get("status") == "ready" and not p.get("confirmed")
+            and EMB.lookup(pid, [p["id"]]) is not None]
+    if not todo:
         return {"classified": 0}
-    todo = [x for x in todo if EMB.lookup(pid, [x]) is not None]
-    prm = {k: v_ for k, v_ in (params or {}).items() if v_ is not None}
-    res = v.classify.classify(embs, item_text, examples, prm)
+    embs = EMB.lookup(pid, todo)
+    prm = {**v.classify.DEFAULTS, **{k: v_ for k, v_ in (params or {}).items() if v_ is not None}}
+    ids, P = v.classify.scores(embs, item_text, examples, prm)
+    parent = parents(prj.get("items", []))
+    res = [decide_tree(row, ids, parent, prm) for row in P]
     assigned = 0
     with store.edit(pid) as prj2:
         for phid, r in zip(todo, res):
@@ -369,10 +380,62 @@ def classify_project(pid: str, params: dict | None = None) -> dict:
                 continue
             if ph.get("confirmed"):
                 continue                       # человек успел положить сам — не трогаем
-            store.assign(prj2, phid, r.get("item_id"), confirmed=False, confidence=float(r.get("confidence") or 0))
-            ph["suggestions"] = [[a, round(float(b), 4)] for a, b in (r.get("suggestions") or [])]
-            assigned += 1 if r.get("item_id") else 0
+            store.assign(prj2, phid, r["item_id"], confirmed=False, confidence=r["confidence"])
+            ph["suggestions"] = r["suggestions"]
+            assigned += 1 if r["item_id"] else 0
     return {"classified": len(todo), "assigned": assigned, "unsorted": len(todo) - assigned}
+
+
+def parents(items: list[dict]) -> dict[str, str | None]:
+    """Родитель каждого пункта по порядку и уровню: ближайший пункт выше с меньшим уровнем."""
+    out, stack = {}, []
+    for it in items:
+        lvl = int(it.get("level") or 1)
+        while stack and stack[-1][0] >= lvl:
+            stack.pop()
+        out[it["id"]] = stack[-1][1] if stack else None
+        stack.append((lvl, it["id"]))
+    return out
+
+
+def decide_tree(row: np.ndarray, ids: list[str], parent: dict, prm: dict) -> dict:
+    """Раскладка с учётом дерева ТЗ. Раздел и его подпункт не спорят за фото: сначала выбирается
+    ветка верхнего уровня (сумма вероятностей пунктов внутри неё), затем спуск к подпункту,
+    пока среди подпунктов есть явный лидер. Неуверенно на верхнем уровне — «Неразобранное»."""
+    p = {iid: float(x) for iid, x in zip(ids, row)}
+    children: dict[str | None, list[str]] = {}
+    for iid in ids:
+        par = parent.get(iid)
+        while par is not None and par not in p:      # пропущенные («Не требуется») — к деду
+            par = parent.get(par)
+        children.setdefault(par, []).append(iid)
+    mass: dict[str, float] = {}
+
+    def subtree(iid):
+        if iid not in mass:
+            mass[iid] = p[iid] + sum(subtree(c) for c in children.get(iid, []))
+        return mass[iid]
+
+    def ranked(kids):
+        return sorted(((subtree(c), c) for c in kids), reverse=True)
+
+    top = ranked(children.get(None, []))
+    sugg = [[iid, round(x, 4)] for x, iid in sorted(((x, i) for i, x in p.items()), reverse=True)[:int(prm.get("top", 3))]]
+    if not top:
+        return {"item_id": None, "confidence": 0.0, "suggestions": sugg}
+    best, node = top[0]
+    second = top[1][0] if len(top) > 1 else 0.0
+    if best < float(prm["threshold"]) or best - second < float(prm["margin"]):
+        return {"item_id": None, "confidence": round(best, 4), "suggestions": sugg}
+    while children.get(node):
+        kids = ranked(children[node])
+        share = kids[0][0] / max(subtree(node), 1e-9)
+        nxt = kids[1][0] / max(subtree(node), 1e-9) if len(kids) > 1 else 0.0
+        if share < 0.35 or share - nxt < float(prm["margin"]):
+            break
+        node = kids[0][1]
+    # уверенность — вероятность ветки выбранного пункта (пункт вместе с его подпунктами)
+    return {"item_id": node, "confidence": round(min(1.0, subtree(node)), 4), "suggestions": sugg}
 
 
 def mark_duplicates(pid: str, max_dist: int = 6) -> int:

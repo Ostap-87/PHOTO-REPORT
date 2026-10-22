@@ -82,6 +82,13 @@ def has_children(items: list[dict], i: int) -> bool:
     return i + 1 < len(items) and int(items[i + 1].get("level") or 1) > int(items[i].get("level") or 1)
 
 
+def same_text(a: str, b: str) -> bool:
+    """Тексты совпадают без учёта регистра, пробелов и знаков в конце (полный текст = названию)."""
+    def norm(t: str) -> str:
+        return re.sub(r"\s+", " ", t or "").strip().rstrip(" .;:,").lower()
+    return norm(a) == norm(b)
+
+
 def item_label(item: dict) -> str:
     return f"{(item.get('num') or '').strip()} {item.get('title') or ''}".strip()
 
@@ -231,17 +238,14 @@ class ImageCache:
         self._cache: dict[str, tuple[bytes, int, int] | None] = {}
 
     def get(self, photo: dict) -> tuple[bytes, int, int] | None:
+        """JPEG для отчёта: рабочая копия, иначе исходник, иначе превью; None — файла нет или он битый."""
         pid = photo.get("id") or ""
         if pid in self._cache:
             return self._cache[pid]
+        cands = [photo_path(self.project_dir, photo, "work"),
+                 os.path.join(self.project_dir, "photos", "thumb", f"{pid}.jpg")]
         res = None
-        tried = set()
-        for which in ("work", "thumb"):
-            path = photo_path(self.project_dir, photo, which) if which == "work" else \
-                os.path.join(self.project_dir, "photos", "thumb", f"{pid}.jpg")
-            if not path or path in tried or not os.path.isfile(path):
-                continue
-            tried.add(path)
+        for path in dict.fromkeys(c for c in cands if c and os.path.isfile(c)):
             res = self._prepare(path)
             if res:
                 break
@@ -299,19 +303,67 @@ def quality_text(photo: dict) -> str:
 # Сводка
 # ---------------------------------------------------------------------------
 
-def summary(project: dict) -> dict:
+def _level(item: dict) -> int:
+    try:
+        return int(item.get("level") or 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def section_info(project: dict, idx: "PhotoIndex | None" = None) -> dict:
+    """Разделы без собственного исполнения: {item_id: (готово подпунктов, всего подпунктов)}.
+
+    Раздел — пункт с подпунктами, у которого статус «Не начато», нет фото и комментария.
+    Такие пункты не считаются в сводке и показываются прогрессом подпунктов.
+    """
     items = project.get("items") or []
-    counts = {k: 0 for k in STATUS_ORDER}
-    for it in items:
-        counts[status_key(it)] += 1
+    idx = idx or PhotoIndex(project)
+    flags = []
+    for i, it in enumerate(items):
+        flags.append(has_children(items, i) and status_key(it) == "todo"
+                     and not (it.get("comment") or "").strip() and not idx.for_item(it))
+    out = {}
+    for i, it in enumerate(items):
+        if not flags[i]:
+            continue
+        done = total = 0
+        for j in range(i + 1, len(items)):
+            if _level(items[j]) <= _level(it):
+                break
+            if flags[j]:
+                continue
+            k = status_key(items[j])
+            if k == "na":
+                continue
+            total += 1
+            done += k in COMPLETE
+        out[it.get("id") or f"#{i}"] = (done, total)
+    return out
+
+
+def section_key(item: dict, index_in_project: int | None = None) -> str:
+    return item.get("id") or f"#{index_in_project}"
+
+
+def summary(project: dict) -> dict:
+    """Сводка для титула: счётчики статусов (без разделов), готовность, фото, период съёмки."""
+    items = project.get("items") or []
     idx = PhotoIndex(project)
+    sections = section_info(project, idx)
+    counts = {k: 0 for k in STATUS_ORDER}
+    for i, it in enumerate(items):
+        if section_key(it, i) in sections:
+            continue
+        counts[status_key(it)] += 1
+    total = sum(counts.values())
     in_items = sum(1 for p in idx.photos if p.get("item_id") in idx.item_ids and p.get("item_id"))
     unsorted = len(idx.photos) - in_items
-    applicable = len(items) - counts["na"]
+    applicable = total - counts["na"]
     complete = sum(counts[k] for k in COMPLETE)
     dts = sorted(d for d in (photo_datetime(p) for p in idx.photos) if d)
     return {
-        "total": len(items),
+        "total": total,
+        "sections": len(sections),
         "counts": counts,
         "complete": complete,
         "progress": (complete / applicable) if applicable else 0.0,
