@@ -30,6 +30,17 @@ echo "[1/3] Python: $PY ($("$PY" --version))"
 
 echo "[2/3] Устанавливаю зависимости (несколько минут, нужен интернет)…"
 "$PY" -m venv .venv
+# Медленный или недоступный pypi.org (Китай, часть сетей в России) — ставим с зеркала.
+# Своё зеркало можно задать заранее: PIP_INDEX_URL=… bash install_mac.command
+if [ -z "$PIP_INDEX_URL" ]; then
+    if ! curl -s -m 8 -o /dev/null https://pypi.org/simple/pip/; then
+        for m in https://pypi.tuna.tsinghua.edu.cn/simple https://mirrors.aliyun.com/pypi/simple/; do
+            if curl -s -m 8 -o /dev/null "$m/pip/"; then export PIP_INDEX_URL="$m"; break; fi
+        done
+        [ -n "$PIP_INDEX_URL" ] && echo "      pypi.org отвечает медленно — использую зеркало $PIP_INDEX_URL"
+    fi
+fi
+export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-60}"
 ./.venv/bin/python -m pip install -q --timeout 60 --retries 10 --upgrade pip
 ./.venv/bin/python -m pip install -q --timeout 60 --retries 10 -r requirements.txt
 
