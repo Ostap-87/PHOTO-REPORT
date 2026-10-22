@@ -5,6 +5,7 @@
     export_xlsx(project, project_dir, out_path) -> str            # Excel: листы «Исполнение» и «Фото»
     export_zip(project, project_dir, out_path, which="work") -> str   # фото и файлы по папкам пунктов + «Неразобранное/»
     export_registry_xlsx(project, out_path) -> str                # «Реестр подтверждений» + «Требуют уточнения»
+    export_tz_docx(project, project_dir, out_path, options) -> str  # «ТЗ с фото»: исходный .docx ТЗ + исполнение и фото
     folder_name(item, index=None) -> str     # имя папки пункта в ZIP («01 1.2 Расстановка столов»)
     folder_names(project) -> {item_id: str}  # имена всех папок — ровно как внутри ZIP
 
@@ -22,10 +23,11 @@ from .common import STATUS_COLORS, STATUS_LABELS, STATUS_ORDER
 from .docx_report import export_docx
 from .pdf_report import export_pdf, find_font
 from .registry_xlsx import export_registry_xlsx
+from .tz_docx import NotWordTZ, export_tz_docx
 from .xlsx_report import export_xlsx
 from .zip_export import UNSORTED_FOLDER, export_zip, folder_name, folder_names
 
 __all__ = [
-    "export_docx", "export_pdf", "export_xlsx", "export_zip", "export_registry_xlsx", "folder_name", "folder_names",
+    "export_docx", "export_pdf", "export_xlsx", "export_zip", "export_registry_xlsx", "export_tz_docx", "NotWordTZ", "folder_name", "folder_names",
     "STATUS_LABELS", "STATUS_COLORS", "STATUS_ORDER", "UNSORTED_FOLDER", "find_font",
 ]

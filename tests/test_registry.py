@@ -154,7 +154,7 @@ def test_registry_build_endpoint(client, monkeypatch):
     from app.registry import ai
     pid = client.post("/api/projects", json={"name": "Форум"}).json()["id"]
     client.post(f"/api/projects/{pid}/tz", files={"file": ("tz.txt", TZ.encode())})
-    assert client.post(f"/api/projects/{pid}/registry/build", json={}).status_code == 409   # нет ключа
+    assert client.post(f"/api/projects/{pid}/registry/build", json={"mode": "ai"}).status_code == 409   # нет ключа
     client.put("/api/ai/key", json={"api_key": "sk-ant-api03-" + "y" * 44})
     seen = {}
 
@@ -162,7 +162,7 @@ def test_registry_build_endpoint(client, monkeypatch):
         seen["text"] = text
         return dict(RESULT, model="claude-opus-5-5", usage={})
     monkeypatch.setattr(ai, "analyze", fake)
-    assert client.post(f"/api/projects/{pid}/registry/build", json={}).json()["started"]
+    assert client.post(f"/api/projects/{pid}/registry/build", json={"mode": "ai"}).json()["started"]
     for _ in range(100):
         prj = client.get(f"/api/projects/{pid}").json()
         if prj.get("registry"):

@@ -493,7 +493,8 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
         <label class="chk"><input type="checkbox" id="rOnlyDone"> Только выполненные пункты</label>
         <label class="chk"><input type="checkbox" id="rUnsorted"> Добавить неразобранные фото</label>
         <button class="btn big" data-exp="registry" id="expRegistry" hidden>Реестр подтверждений (Excel)</button>
-        <button class="btn primary big" data-exp="docx">Отчёт Word (.docx)</button>
+        <button class="btn primary big" data-exp="tzdocx" id="expTz" title="Исходный файл ТЗ: под пунктами — отметка исполнения, фото, файлы и ссылки">ТЗ с фото (Word)</button>
+        <button class="btn big" data-exp="docx">Отчёт Word (.docx)</button>
         <button class="btn big" data-exp="pdf">Отчёт PDF</button>
         <button class="btn big" data-exp="xlsx">Таблица Excel</button>
         <hr>
@@ -734,8 +735,9 @@ function renderRegbar() {
   if (j.stage === 'registry') {
     h += `<div class="busy"><span class="spin"></span>${esc(j.message || 'ИИ составляет реестр…')} Это может занять несколько минут.</div>`;
   } else if (!reg) {
-    h += `<div class="callout"><b>Реестр подтверждений.</b> ИИ прочитает всё ТЗ по вашему заданию и выпишет пункты, по которым нужно приложить подтверждение, — что именно и в каком виде; спорные пункты — отдельно. Строки реестра станут папками для фото, скриншотов и файлов.</div>
-      <div class="row"><button class="btn primary sm" data-reg="build">Составить реестр (ИИ)</button>
+    h += `<div class="callout"><b>Реестр подтверждений.</b> Программа найдёт в ТЗ пункты, по которым нужно приложить подтверждение (фото, скриншоты, видео, отчёты, списки, ссылки), — что именно, сколько и в каком виде; размытые формулировки — в «Требуют уточнения». Работает по правилам, без ИИ и интернета. Строки реестра станут папками для фото, скриншотов и файлов.</div>
+      <div class="row"><button class="btn primary sm" data-reg="rules">Составить реестр</button>
+      <button class="btn sm ghost" data-reg="build" title="Глубокий разбор ТЗ ИИ по вашему заданию: нужен ключ API Anthropic и интернет">Составить с ИИ</button>
       <label class="btn sm">Загрузить готовый реестр (Excel)<input type="file" accept=".xlsx,.xlsm" data-reg="import" hidden></label></div>`;
   } else {
     const sm = reg.summary || {}, cl = (S.prj.clarify || []).length, all = (S.prj.tz_items || []).length;
@@ -745,10 +747,11 @@ function renderRegbar() {
         <button data-view="all" class="${S.view === 'all' ? 'on' : ''}">Все пункты ТЗ · ${all}</button></div>
       <span class="spacer"></span>
       <a class="btn sm" href="${P()}/export/registry" download>Скачать реестр (Excel)</a>
-      <button class="btn sm" data-reg="build">${reg.mode === 'ai' ? 'Составить заново' : 'Составить ИИ'}</button>
+      <button class="btn sm" data-reg="rules" title="По правилам, без ИИ">Составить заново</button>
+      <button class="btn sm ghost" data-reg="build" title="Глубокий разбор ТЗ ИИ: нужен ключ API">С ИИ</button>
       <label class="btn sm ghost">Загрузить реестр<input type="file" accept=".xlsx,.xlsm" data-reg="import" hidden></label>
       <button class="btn sm ghost" data-reg="drop" title="Работать по всем пунктам ТЗ без реестра">Без реестра</button></div>`;
-    const info = [reg.mode === 'ai' ? `составлен ИИ ${esc(reg.built || '')}` : reg.mode === 'import' ? `загружен из Excel ${esc(reg.built || '')}` : 'составлен вручную',
+    const info = [reg.mode === 'ai' ? `составлен ИИ ${esc(reg.built || '')}` : reg.mode === 'rules' ? `составлен по правилам ${esc(reg.built || '')} — проверьте строки` : reg.mode === 'import' ? `загружен из Excel ${esc(reg.built || '')}` : 'составлен вручную',
       sm.analyzed ? `проанализировано: ${esc(sm.analyzed)}` : ''].filter(Boolean).join(' · ');
     h += `<div class="sum">${info}${sm.issues ? `<br>Неоднозначности: ${esc(sm.issues)}` : ''}</div>`;
     if (reg.stale) h += `<div class="stale">ТЗ заменено после составления реестра — составьте реестр заново.</div>`;
@@ -756,11 +759,17 @@ function renderRegbar() {
   if (j.error && j.stage !== 'registry') h += `<div class="err">${esc(j.error)}</div>`;
   if (bar.innerHTML !== h) bar.innerHTML = h;
 }
-async function buildRegistry() {
-  if (!S.ai || !S.ai.configured) { openAi(true); return; }
+async function buildRegistry(mode) {
+  if (mode === 'ai' && (!S.ai || !S.ai.configured)) { openAi(true); return; }
   if (hasReg() && !confirm('Составить реестр заново? Статусы, комментарии и вложения сохранятся у строк с тем же номером и наименованием.')) return;
-  try { const r = await api('POST', `${P()}/registry/build`, {}); S.job = r.job; renderRegbar(); renderStatus(); }
-  catch (e) { if (/ключ/i.test(String(e.message))) openAi(true); }
+  try {
+    const r = await api('POST', `${P()}/registry/build`, { mode });
+    if (mode === 'rules') {
+      S.prj = r.project; S.view = 'registry'; $$('#items > .item').forEach(x => x.remove());
+      toast(`Реестр по правилам: ${r.rows} строк, на уточнение ${r.clarify}`); renderData(); return;
+    }
+    S.job = r.job; renderRegbar(); renderStatus();
+  } catch (e) { if (/ключ/i.test(String(e.message))) openAi(true); }
 }
 async function importRegistry(file) {
   if (!file) return;
@@ -794,7 +803,8 @@ $('#altList').addEventListener('click', async e => {
 $('#regbar').addEventListener('click', async e => {
   const v = e.target.closest('[data-view]'); if (v) { S.view = v.dataset.view; renderTz(); return; }
   const b = e.target.closest('[data-reg]'); if (!b || b.tagName === 'INPUT') return;
-  if (b.dataset.reg === 'build') buildRegistry();
+  if (b.dataset.reg === 'rules') buildRegistry('rules');
+  if (b.dataset.reg === 'build') buildRegistry('ai');
   if (b.dataset.reg === 'drop' && confirm('Вернуться к работе по всем пунктам ТЗ? Реестр будет удалён, вложения перейдут в «Неразобранное».')) { S.prj = await api('DELETE', `${P()}/registry`); S.view = 'registry'; $$('#items > .item').forEach(x => x.remove()); renderData(); }
 });
 $('#regbar').addEventListener('change', e => { if (e.target.dataset.reg === 'import') { importRegistry(e.target.files[0]); e.target.value = ''; } });
@@ -1301,6 +1311,7 @@ document.addEventListener('keydown', e => {
 // ------------------------------------------------------------------ отчёт
 function renderReport() {
   $('#expRegistry').hidden = !hasReg();
+  $('#expTz').hidden = (S.prj.tz || {}).kind !== 'docx';
   const items = S.prj.items || [], ph = S.prj.photos || [];
   const ready = items.filter(i => DONE.has(i.status)).length, need = items.filter(i => i.status !== 'na').length;
   const noPh = items.filter(i => i.status !== 'na' && !(i.photo_ids || []).length).length;

@@ -644,6 +644,10 @@ def export(pid: str, fmt: str, which: str = Query("work"), photos_per_row: int =
             ex.export_xlsx(prj, d, out)
         elif fmt == "zip":
             ex.export_zip(prj, d, out, "original" if which == "original" else "work")
+        elif fmt == "tzdocx":
+            out = os.path.join(outdir, "tz-with-photos.docx")
+            name = _report_name(prj, "docx").replace(".docx", " — ТЗ с фото.docx")
+            ex.export_tz_docx(prj, d, out, options)
         elif fmt == "registry":
             if not hasattr(ex, "export_registry_xlsx"):
                 raise HTTPException(501, "Выгрузка реестра ещё не подключена")
@@ -654,6 +658,8 @@ def export(pid: str, fmt: str, which: str = Query("work"), photos_per_row: int =
             raise HTTPException(404, "неизвестный формат")
     except HTTPException:
         raise
+    except ex.NotWordTZ as exc:
+        raise HTTPException(400, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(500, f"Отчёт не собран: {exc}") from exc
     return FileResponse(out, filename=name)
@@ -737,12 +743,22 @@ def _tz_text(pid: str, prj: dict) -> str:
 
 @app.post("/api/projects/{pid}/registry/build")
 def registry_build(pid: str, body: dict = Body(default={})):
-    """Составить «Реестр подтверждений» ИИ по заданию config/registry_prompt.md (в фоне)."""
+    """Составить «Реестр подтверждений»: mode="rules" (по умолчанию) — по правилам, без ИИ и ключа, сразу;
+    mode="ai" — ИИ по заданию config/registry_prompt.md (в фоне, нужен ключ API)."""
     from app import secrets_store
     from app.registry import ai, build
     prj = _load(pid)
     if not (prj.get("tz_items") or prj.get("items")):
         raise HTTPException(400, "Сначала загрузите ТЗ")
+    if body.get("mode", "rules") == "rules":                 # без ИИ: правила по тексту ТЗ, сразу и без ключа
+        from app.registry import rules
+        with store.edit(pid) as prj2:
+            src = [it for it in (prj2.get("tz_items") or prj2.get("items") or []) if it.get("kind", "tz") == "tz"]
+            result = rules.analyze(src, with_equipment=bool(body.get("with_equipment")))
+            build.apply(prj2, result, mode="rules")
+        _classify_bg(pid)
+        return {"started": False, "done": True, "rows": len(result["rows"]), "clarify": len(result["clarify"]),
+                "project": store.load(pid)}
     if not secrets_store.get_api_key():
         raise HTTPException(409, "Для анализа нужен ключ API Anthropic — добавьте его в настройках")
     job = pipeline.pipeline().job(pid)

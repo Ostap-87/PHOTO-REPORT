@@ -503,6 +503,35 @@ def _table(table: Table, ti: int, numbering: WordNumbering) -> tuple[TableBlock,
             "\n".join(plain_rows))
 
 
+def paragraph_refs(document) -> list[tuple[str, object]]:
+    """Абзацы документа тем же обходом, что parse_docx: [(ref, элемент w:p)] в порядке документа.
+
+    ref совпадает с source.ref пунктов («p12», «t0-r6-p16»); для строки таблицы («t0-r6») — её последний
+    абзац. Нужен выгрузке «ТЗ с фото», чтобы вставить отметки и фото в исходный файл под пунктами.
+    """
+    out: list[tuple[str, object]] = []
+    p_index = t_index = 0
+    for block in _iter_blocks(document.element.body, document._body):
+        if isinstance(block, Paragraph):
+            out.append((f"p{p_index}", block._p))
+            p_index += 1
+            continue
+        ti = t_index
+        t_index += 1
+        for ri, tr in enumerate(block._tbl.tr_lst):
+            pk, last = 0, None
+            for tc in tr.tc_lst:
+                if tc.vMerge == "continue":
+                    continue
+                for p in _Cell(tc, block).paragraphs:
+                    out.append((f"t{ti}-r{ri}-p{pk}", p._p))
+                    last = p._p
+                    pk += 1
+            if last is not None:
+                out.append((f"t{ti}-r{ri}", last))
+    return out
+
+
 def parse_docx(data: bytes, filename: str) -> dict:
     """Разбор .docx → словарь parse_tz (см. app/tz/__init__.py)."""
     try:

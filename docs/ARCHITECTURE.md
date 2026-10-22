@@ -8,7 +8,7 @@ webui/index.html  ──HTTP──►  app/server.py  ──►  app/store.py   
                                   │                app/pipeline.py   (фоновая обработка фото)
                                   ├──► app/tz/       разбор ТЗ (docx/pdf/xlsx/csv/txt) -> пункты
                                   ├──► app/vision/   фото: чтение, качество, улучшение, лица, эмбеддинги, сортировка, дубли
-                                  └──► app/export/   отчёт Word / PDF / Excel, ZIP по папкам
+                                  └──► app/export/   «ТЗ с фото», отчёт Word / PDF / Excel, ZIP по папкам
 ```
 
 ## Модуль 1 — ТЗ и исполнение
@@ -18,7 +18,11 @@ webui/index.html  ──HTTP──►  app/server.py  ──►  app/store.py   
 
 ## Реестр подтверждений (app/registry)
 ТЗ -> полный текст с подставленной нумерацией (`parse_tz(...)["full_text"]`, `tz/full_text.txt`) ->
-`ai.analyze()` (Claude, задание `config/registry_prompt.md` + технические условия, ответ — JSON по схеме,
+`rules.analyze()` — по умолчанию, без ИИ и сети: правила по тексту пунктов (раздел об отчётности; глагол
+передачи + что именно в одном предложении; прямые фото/видео/скриншоты; по флажку — оснащение с количествами),
+«Что приложить» из вида, количества и формы, ссылки «пункт N» из раздела отчётности — в номер строки,
+«Требуют уточнения» по размытым формулировкам. Тот же формат результата, что у ИИ.
+По кнопке «С ИИ» — `ai.analyze()` (Claude, задание `config/registry_prompt.md` + технические условия, ответ — JSON по схеме,
 два шага: реестр и повторная сверка, `fallbacks: "default"` при отказе модели) -> `build.apply()`:
 строки реестра становятся рабочими пунктами `items` (`kind: "registry"`, поля `section`, `required`, `note`,
 `links`), «Требуют уточнения» — `project["clarify"]`, все пункты ТЗ — `project["tz_items"]`. Повторный анализ
@@ -90,6 +94,16 @@ export_docx(project: dict, project_dir: str, out_path: str, options: dict) -> st
 export_pdf(project: dict, project_dir: str, out_path: str, options: dict) -> str
 export_xlsx(project: dict, project_dir: str, out_path: str) -> str
 export_zip(project: dict, project_dir: str, out_path: str, which: "work"|"original") -> str   # папки «<№> <пункт>/…»
+export_tz_docx(project: dict, project_dir: str, out_path: str, options: dict) -> str   # «ТЗ с фото»
+```
+
+«ТЗ с фото» (`tz_docx.py`): исходный .docx ТЗ; `app.tz.docx_parser.paragraph_refs()` проходит документ тем же
+порядком, что разборщик, поэтому `source.ref` пункта («p12», «t0-r6-p16», «t0-r6») указывает на тот же абзац.
+Вставка — после текста пункта: перед следующим абзацем-пунктом (или таблицей с пунктами) того же контейнера, в
+ячейке таблицы — в той же ячейке (ячейка всегда заканчивается абзацем). Блоки: отметка исполнения, таблица фото
+(в узкой ячейке — по одному в ряд), файлы, ссылки. Пункты без места в ТЗ — в конце, «Дополнительно к ТЗ».
+
+```
 # options: {"photos_per_row": 2, "include_unsorted": False, "only_status": None}
 ```
 ### app/vision (фото)
