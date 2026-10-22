@@ -39,15 +39,27 @@ def _popcount64(x: np.ndarray) -> np.ndarray:
     return table[x.view(np.uint8).reshape(*x.shape, 8)].sum(-1)
 
 
-def groups(hashes: Sequence[int], max_dist: int = DEFAULT_MAX_DIST) -> list[list[int]]:
+SOFT_DIST = 16          # с эмбеддингами: кадры серии (сдвиг/поворот камеры) дают dHash 6–13 ...
+MIN_COS = 0.95          # ... и косинус CLIP 0.95–0.99; разные фото одного зала — не выше 0.93
+
+
+def groups(hashes: Sequence[int], max_dist: int = DEFAULT_MAX_DIST, embs=None,
+           min_cos: float = MIN_COS, soft_dist: int = SOFT_DIST) -> list[list[int]]:
     """Группы почти-дублей (только группы из 2+ фото), индексы — как в hashes, по возрастанию.
 
+    Пара — дубль, если расстояние Хэмминга <= max_dist. Если переданы embs (N×D эмбеддинги CLIP
+    в том же порядке, L2-нормированы), дублем считается и пара с расстоянием <= soft_dist и
+    косинусом >= min_cos — так ловятся кадры серии, снятые с небольшим сдвигом камеры.
     Связность транзитивная (union-find): если A~B и B~C, то A, B, C в одной группе.
     """
     n = len(hashes)
     if n < 2:
         return []
     arr = np.array([int(h) & ((1 << 64) - 1) for h in hashes], dtype=np.uint64)
+    E = None
+    if embs is not None and len(embs) == n:
+        E = np.asarray(embs, dtype=np.float32)
+        E = E / np.maximum(np.linalg.norm(E, axis=1, keepdims=True), 1e-12)
     parent = list(range(n))
 
     def find(i: int) -> int:
@@ -60,7 +72,10 @@ def groups(hashes: Sequence[int], max_dist: int = DEFAULT_MAX_DIST) -> list[list
     for s in range(0, n, chunk):
         block = arr[s:s + chunk]
         d = _popcount64(block[:, None] ^ arr[None, :])     # (chunk, n)
-        ii, jj = np.nonzero(d <= max_dist)
+        close = d <= max_dist
+        if E is not None:
+            close |= (d <= soft_dist) & ((E[s:s + chunk] @ E.T) >= min_cos)
+        ii, jj = np.nonzero(close)
         for i, j in zip((ii + s).tolist(), jj.tolist()):
             if j > i:
                 ri, rj = find(i), find(j)

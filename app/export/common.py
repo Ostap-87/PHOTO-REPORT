@@ -165,13 +165,25 @@ def photo_datetime(photo: dict):
 # ---------------------------------------------------------------------------
 
 class PhotoIndex:
-    """Фото проекта: по пунктам (в порядке item.photo_ids) и «Неразобранное»."""
+    """Фото и файлы проекта: по пунктам (фото — в порядке item.photo_ids) и «Неразобранное»."""
 
     def __init__(self, project: dict, skip_duplicates: bool = False):
         self.photos = [p for p in (project.get("photos") or []) if p.get("id")]
         self.by_id = {p["id"]: p for p in self.photos}
         self.item_ids = {it.get("id") for it in (project.get("items") or [])}
         self.skip_duplicates = skip_duplicates
+        self.files = [f for f in (project.get("files") or []) if isinstance(f, dict) and f.get("id")]
+
+    def files_for(self, item: dict) -> list[dict]:
+        """Вложения пункта (не фото: pdf, docx, xlsx, видео…) в порядке добавления."""
+        res = [f for f in self.files if item.get("id") and f.get("item_id") == item.get("id")]
+        res.sort(key=lambda f: (str(f.get("added") or ""), f.get("name") or ""))
+        return res
+
+    def unsorted_files(self) -> list[dict]:
+        res = [f for f in self.files if not f.get("item_id") or f.get("item_id") not in self.item_ids]
+        res.sort(key=lambda f: (str(f.get("added") or ""), f.get("name") or ""))
+        return res
 
     def _ok(self, p: dict) -> bool:
         return not (self.skip_duplicates and p.get("duplicate_of"))
@@ -211,6 +223,58 @@ def photo_path(project_dir: str, photo: dict, which: str = "work") -> str | None
         if found:
             return found[0]
     return None
+
+
+def file_path(project_dir: str, f: dict) -> str | None:
+    """Путь к вложению: photos/files/<id><ext>; None — файла нет."""
+    fid = f.get("id") or ""
+    base = os.path.join(project_dir, "photos", "files")
+    ext = f.get("ext") or os.path.splitext(f.get("name") or "")[1]
+    cand = os.path.join(base, f"{fid}{ext}")
+    if fid and os.path.isfile(cand):
+        return cand
+    found = sorted(glob.glob(os.path.join(glob.escape(base), glob.escape(fid) + ".*"))) if fid else []
+    return found[0] if found else None
+
+
+def fmt_size(n) -> str:
+    """Размер файла по-русски: «820 Б», «120 КБ», «3,4 МБ»."""
+    try:
+        n = float(n)
+    except (TypeError, ValueError):
+        return ""
+    for unit in ("Б", "КБ", "МБ", "ГБ"):
+        if n < 1024 or unit == "ГБ":
+            return f"{n:.0f} {unit}" if unit in ("Б", "КБ") or n >= 10 else f"{n:.1f} {unit}".replace(".", ",")
+        n /= 1024
+    return ""
+
+
+def file_label(f: dict) -> str:
+    name = f.get("name") or f.get("id") or "файл"
+    size = fmt_size(f.get("size")) if f.get("size") else ""
+    return f"{name} ({size})" if size else name
+
+
+def item_links(item: dict) -> list[str]:
+    """item.links → список непустых строк (принимает и одну строку)."""
+    links = item.get("links") or []
+    if isinstance(links, str):
+        links = [links]
+    return [str(u).strip() for u in links if str(u or "").strip()]
+
+
+def is_web_link(url: str) -> bool:
+    """Ссылку можно сделать кликабельной (только http, https, mailto)."""
+    return bool(re.match(r"^(https?://|mailto:)[^\s<>\"']+$", url or "", re.I))
+
+
+def item_extra(item: dict) -> dict:
+    """Необязательные поля пункта из анализа ТЗ (пустые — не показываем)."""
+    def txt(key: str) -> str:
+        v = item.get(key)
+        return str(v).strip() if v not in (None, "") else ""
+    return {"section": txt("section"), "required": txt("required"), "note": txt("note"), "links": item_links(item)}
 
 
 _HEIF_READY: bool | None = None
@@ -320,8 +384,10 @@ def section_info(project: dict, idx: "PhotoIndex | None" = None) -> dict:
     idx = idx or PhotoIndex(project)
     flags = []
     for i, it in enumerate(items):
+        ex = item_extra(it)
         flags.append(has_children(items, i) and status_key(it) == "todo"
-                     and not (it.get("comment") or "").strip() and not idx.for_item(it))
+                     and not (it.get("comment") or "").strip() and not idx.for_item(it)
+                     and not idx.files_for(it) and not (ex["required"] or ex["note"] or ex["links"]))
     out = {}
     for i, it in enumerate(items):
         if not flags[i]:
@@ -363,6 +429,7 @@ def summary(project: dict) -> dict:
     dts = sorted(d for d in (photo_datetime(p) for p in idx.photos) if d)
     return {
         "total": total,
+        "files": len(idx.files),
         "sections": len(sections),
         "counts": counts,
         "complete": complete,

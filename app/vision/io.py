@@ -43,12 +43,20 @@ def load_image(path: str | os.PathLike) -> tuple[np.ndarray, bytes | None, dict]
         except Exception:  # noqa: BLE001
             pass
         exif_bytes = im.info.get("exif") or None
-        exif = im.getexif()
-        # HEIC: pillow_heif сам поворачивает картинку и сбрасывает тег, исходный — в info
-        orientation = int(im.info.get("original_orientation") or exif.get(_ORIENTATION, 1) or 1)
-        meta = _meta_from_exif(exif)
+        meta: dict = {"datetime": "", "gps": None, "camera": ""}
+        orientation = 1
+        try:  # битые метаданные не должны мешать открыть фото
+            exif = im.getexif()
+            # HEIC: pillow_heif сам поворачивает картинку и сбрасывает тег, исходный — в info
+            orientation = int(im.info.get("original_orientation") or exif.get(_ORIENTATION, 1) or 1)
+            meta = _meta_from_exif(exif)
+        except Exception:  # noqa: BLE001
+            pass
         im.load()
-        im = ImageOps.exif_transpose(im)  # для HEIC pillow_heif уже повернул и сбросил тег — тогда no-op
+        try:
+            im = ImageOps.exif_transpose(im)  # для HEIC pillow_heif уже повернул и сбросил тег — no-op
+        except Exception:  # noqa: BLE001
+            pass
         rgb = _to_rgb_array(im)
     h, w = rgb.shape[:2]
     meta.update({"w": int(w), "h": int(h), "format": fmt, "orientation": orientation})

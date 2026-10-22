@@ -160,7 +160,8 @@ class Embedder:
             (TEXT_REPO, "tokenizer.json"),
             (TEXT_REPO, "2_Dense/model.safetensors"),
         ]
-        self._lock = threading.RLock()          # скачивание, создание сессий, статус
+        self._lock = threading.RLock()          # создание сессий, статус
+        self._dl_lock = threading.Lock()        # скачивание идёт в одном потоке, остальные ждут его
         self._img_run_lock = threading.Lock()   # один прогон картинок за раз (память/потоки CPU)
         self._txt_run_lock = threading.Lock()
         self._downloading = False
@@ -207,29 +208,30 @@ class Embedder:
 
         Бросает ModelUnavailableError, если скачать не удалось (текст ошибки — и в status()["error"]).
         """
-        with self._lock:
-            missing = self._missing()
-            if not missing:
+        with self._dl_lock:
+            with self._lock:
+                missing = self._missing()
+                if missing:
+                    self._downloading = True
+                    self._error = ""
+            if missing:
+                try:
+                    self._download_all(missing, progress_cb)
+                except Exception as e:  # noqa: BLE001 — ошибку отдаём наружу понятным текстом
+                    msg = f"Не удалось скачать модель распознавания: {e}"
+                    with self._lock:
+                        self._error = msg
+                    raise ModelUnavailableError(msg) from e
+                finally:
+                    with self._lock:
+                        self._downloading = False
+            with self._lock:
                 self._progress = 1.0
-                if progress_cb:
-                    progress_cb(1.0)
-                return
-            self._downloading = True
-            self._error = ""
-        try:
-            self._download_all(missing, progress_cb)
-        except Exception as e:  # noqa: BLE001 — ошибку отдаём наружу понятным текстом
-            msg = f"Не удалось скачать модель распознавания: {e}"
-            with self._lock:
-                self._error = msg
-            raise ModelUnavailableError(msg) from e
-        finally:
-            with self._lock:
-                self._downloading = False
-        with self._lock:
-            self._progress = 1.0
         if progress_cb:
-            progress_cb(1.0)
+            try:
+                progress_cb(1.0)
+            except Exception:  # noqa: BLE001
+                pass
 
     def _download_all(self, missing, progress_cb) -> None:
         import requests
@@ -271,7 +273,10 @@ class Embedder:
             headers = {"Range": f"bytes={have}-"} if have else {}
             try:
                 with s.get(url, headers=headers, stream=True, timeout=(15, 60), verify=verify) as r:
-                    if r.status_code == 416:  # уже всё скачано
+                    if r.status_code == 416:  # диапазон за концом файла: .part полный или испорчен
+                        if have != _SIZE_HINTS.get(file):
+                            part.unlink(missing_ok=True)
+                            raise IOError(f"{file}: недокачанный файл не совпал с сервером, качаем заново")
                         total = have
                     else:
                         r.raise_for_status()
@@ -294,6 +299,8 @@ class Embedder:
                         total = total or got
                 size = part.stat().st_size
                 if size != total:
+                    if size > total:
+                        part.unlink(missing_ok=True)
                     raise IOError(f"{file}: скачано {size} из {total} байт")
                 os.replace(part, dst)
                 return size
@@ -363,7 +370,9 @@ class Embedder:
 
     # ---------- кодирование ----------
     def encode_images(self, images: Sequence[np.ndarray]) -> np.ndarray:
-        """Список RGB uint8 -> (N,512) float32, L2-нормировано."""
+        """Список RGB uint8 -> (N,512) float32, L2-нормировано (~90 мс на фото на CPU).
+
+        Результат для фото не зависит от того, с какими ещё фото оно передано (см. IMAGE_BATCH)."""
         if len(images) == 0:
             return np.zeros((0, DIM), np.float32)
         sess = self._image_session()

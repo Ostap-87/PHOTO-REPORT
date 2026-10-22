@@ -22,6 +22,9 @@ from . import quality as Q
 # --- экспозиция ---
 TARGET_MEDIAN = 0.40     # к этой медиане яркости тянем тёмные фото (типично для нормальных 0.35–0.5)
 MIN_GAMMA = 0.40         # предел осветления гаммой (сильнее — «пластик» и шум)
+LOWKEY_HI = 0.85         # в кадре есть яркие источники (p99.5 >= 0.85): это тёмная сцена (концерт, ночь,
+LOWKEY_TARGET = 0.28     # паркинг с лампами), а не недодержка — осветляем мягче, иначе чёрное
+LOWKEY_MIN_GAMMA = 0.60  # становится серой дымкой, а шум лезет наружу
 WHITE_POINT = 0.97       # усиление ограничено: p99.5 яркости не выше этого уровня
 MAX_GAIN = 4.0
 OVER_TARGET = 0.55       # пересвеченные: медиану опускаем к этому уровню
@@ -32,8 +35,8 @@ CLAHE_CLIP = 2.0
 CLAHE_TILES = 8
 CLAHE_BLEND = 0.6        # CLAHE подмешиваем частично — без «HDR-эффекта»
 # --- цвет ---
-WB_STRENGTH = 0.8        # доля коррекции баланса белого (1.0 — полный серый мир, часто перебор)
-WB_MAX_GAIN = 1.6
+WB_STRENGTH = 0.6        # доля коррекции баланса белого (1.0 — полный «серый мир», часто перебор)
+WB_MAX_GAIN = 1.25       # не больше ±25 % на канал: тёплый свет вывески/заката не превращается в бирюзу
 # --- шум и резкость ---
 DENOISE_AFTER_GAIN = 3.0 # тени усилены сильнее этого (экспозиция × растяжение) -> шумоподавление
 DENOISE_NOISE = 3.0      # ...или ожидаемый шум после усиления (σ × усиление) выше этого
@@ -71,9 +74,11 @@ def exposure(rgb: np.ndarray, dark: bool, over: bool) -> tuple[np.ndarray, float
         gain = float(np.clip(WHITE_POINT / max(hi, 1e-3), 1.0, MAX_GAIN))
         med_g = min(0.999, med * gain)
         # 2) гамма по медиане — если после усиления всё ещё темно
+        lowkey = hi >= LOWKEY_HI
+        target = LOWKEY_TARGET if lowkey else TARGET_MEDIAN
         gamma = 1.0
-        if med_g < TARGET_MEDIAN * 0.9 and med_g > 1e-3:
-            gamma = float(np.clip(np.log(TARGET_MEDIAN) / np.log(med_g), MIN_GAMMA, 1.0))
+        if med_g < target * 0.9 and med_g > 1e-3:
+            gamma = float(np.clip(np.log(target) / np.log(med_g), LOWKEY_MIN_GAMMA if lowkey else MIN_GAMMA, 1.0))
         y = np.clip(x * gain, 0, 1) ** gamma
         # во сколько раз выросли тени (уровень 0.1) — для решения о шумоподавлении
         shadow_gain = float(y[26] / max(x[26], 1e-6))

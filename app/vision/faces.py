@@ -18,7 +18,10 @@ import numpy as np
 MODEL_PATH = Path(__file__).resolve().parent / "models" / "face_detection_yunet_2023mar.onnx"
 
 SCORE_THRESHOLD = 0.62   # уверенность YuNet; ниже 0.6 появляются ложные «лица» на узорах,
-                         # выше 0.75 теряются лица в профиль и в полутени (для приватности лучше лишнее)
+                         # выше 0.75 теряются мелкие лица в толпе (0.64–0.8) — для приватности лучше лишнее
+LARGE_FACE = 0.15        # «крупное лицо»: сторона рамки >= 15 % короткой стороны фото...
+LARGE_FACE_SCORE = 0.80  # ...для него нужна уверенность 0.8: настоящие крупные лица дают 0.83–0.95,
+                         # а ложные крупные (канапе на блюде, вывеска MARKET) — 0.67–0.75
 NMS_IOU = 0.3
 WHOLE_SIDES = (320, 640, 1600)  # проходы по целому кадру
 TILE = 1600              # размер плитки для мелких лиц
@@ -133,6 +136,8 @@ def detect(rgb: np.ndarray, score_threshold: float = SCORE_THRESHOLD) -> list[tu
         x, y, w, h = boxes[i]
         if w < 4 or h < 4:
             continue
+        if max(w, h) >= LARGE_FACE * min(H, W) and scores[i] < max(LARGE_FACE_SCORE, score_threshold):
+            continue
         inside = False
         for X, Y, Wb, Hb in kept_boxes:
             ix = max(0.0, min(x + w, X + Wb) - max(x, X))
@@ -154,8 +159,8 @@ def detect(rgb: np.ndarray, score_threshold: float = SCORE_THRESHOLD) -> list[tu
 def blur(rgb: np.ndarray, boxes, mode: str = "blur") -> np.ndarray:
     """Скрывает лица: овал с мягким краем вокруг каждой рамки (запас PAD), так что лицо не узнать.
 
-    mode="blur" — сильное размытие (σ ≈ четверть размера лица) поверх крупной пикселизации;
-    mode="pixelate" — крупные квадраты (~7 по ширине лица). Возвращает новую картинку.
+    mode="blur" — сильное размытие (σ ≈ размер лица / 3.5) поверх крупной пикселизации;
+    mode="pixelate" — крупные квадраты (~4 по ширине лица, не мельче 4 px). Возвращает новую картинку.
     """
     if mode not in ("blur", "pixelate"):
         raise ValueError("mode: blur | pixelate")
@@ -178,20 +183,27 @@ def blur(rgb: np.ndarray, boxes, mode: str = "blur") -> np.ndarray:
         rh, rw = roi.shape[:2]
         size = max(w, h)
         if mode == "pixelate":
-            n = 7.0  # квадратов по ширине лица
-            bs = max(2.0, size / n)
+            n = 4.0  # квадратов по ширине лица (при 7 и больше лицо ещё угадывается)
+            bs = max(4.0, size / n)
             small = cv2.resize(roi, (max(1, int(rw / bs)), max(1, int(rh / bs))), interpolation=cv2.INTER_AREA)
             hidden = cv2.resize(small, (rw, rh), interpolation=cv2.INTER_NEAREST)
         else:
-            bs = max(2.0, size / 6.0)
+            # пикселизация + сильное размытие; размываем уменьшенную копию (на 12 Мп это в сотни раз
+            # быстрее, чем гаусс с σ≈100 px по полному размеру), потом плавно увеличиваем
+            bs = max(3.0, size / 5.0)
             small = cv2.resize(roi, (max(1, int(rw / bs)), max(1, int(rh / bs))), interpolation=cv2.INTER_AREA)
-            hidden = cv2.resize(small, (rw, rh), interpolation=cv2.INTER_LINEAR)
-            sigma = max(2.0, size / 4.0)
-            hidden = cv2.GaussianBlur(hidden, (0, 0), sigma, borderType=cv2.BORDER_REPLICATE)
-        mask = np.zeros((rh, rw), np.float32)
-        cv2.ellipse(mask, (int(round(cx - x0)), int(round(cy - y0))),
-                    (max(1, int(round(ax))), max(1, int(round(ay)))), 0, 0, 360, 1.0, -1, cv2.LINE_AA)
-        mask = cv2.GaussianBlur(mask, (0, 0), feather)
+            sigma = max(3.0, size / 3.5)
+            small = cv2.GaussianBlur(small, (0, 0), max(0.8, sigma / bs), borderType=cv2.BORDER_REPLICATE)
+            hidden = cv2.resize(small, (rw, rh), interpolation=cv2.INTER_CUBIC)
+        # мягкая маска-овал: строим в уменьшенном виде (не крупнее ~128 px) и растягиваем
+        ms = min(1.0, 128.0 / max(rw, rh))
+        mw, mh = max(2, int(round(rw * ms))), max(2, int(round(rh * ms)))
+        mask = np.zeros((mh, mw), np.float32)
+        cv2.ellipse(mask, (int(round((cx - x0) * ms)), int(round((cy - y0) * ms))),
+                    (max(1, int(round(ax * ms))), max(1, int(round(ay * ms)))), 0, 0, 360, 1.0, -1, cv2.LINE_AA)
+        mask = cv2.GaussianBlur(mask, (0, 0), max(0.5, feather * ms))
+        if ms < 1.0:
+            mask = cv2.resize(mask, (rw, rh), interpolation=cv2.INTER_LINEAR)
         # внутри исходной рамки лица — строго 1 (никаких просветов от растушёвки)
         fx0, fy0 = int(max(0, x - x0)), int(max(0, y - y0))
         fx1, fy1 = int(min(rw, x + w - x0)), int(min(rh, y + h - y0))

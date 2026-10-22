@@ -6,7 +6,10 @@
 - tz_banket.docx   — организация банкета: многоуровневая автонумерация Word (1. / 1.1. / 1.1.1.) и маркеры;
 - tz_montazh.docx  — монтаж СКС: заголовки, нумерация стилем «List Number», таблица работ, маркеры;
 - tz_uborka.pdf    — клининг офиса: PDF с текстовым слоем (reportlab), 2 страницы;
-- tz_vystavka.xlsx — застройка выставочного стенда: таблица работ на листе Excel.
+- tz_vystavka.xlsx — застройка выставочного стенда: таблица работ на листе Excel;
+- tz_forum_table.docx — форум: всё ТЗ в одной таблице «№ п/п | Наименование раздела | Требования»,
+  в ячейках — номера вручную («5.1.2.») и автонумерация Word (со startOverride и стартом уровня
+  с 2), маркеры «-» и маркированные списки Word, ручные переносы строк, локальный список «1.», «2.».
 """
 
 from __future__ import annotations
@@ -71,17 +74,24 @@ def _header_block(doc, lines: list[str]) -> None:
     _para(doc, "")
 
 
-def _add_numbering(doc, abstract_xml: str, num_id: int, abstract_id: int) -> None:
-    """Добавляет определение списка в numbering.xml (abstractNum — перед первым w:num)."""
+def _add_numbering(doc, abstract_xml: str, num_id: int, abstract_id: int,
+                   start_overrides: dict | None = None) -> None:
+    """Добавляет определение списка в numbering.xml (abstractNum — перед первым w:num).
+
+    start_overrides: {ilvl: start} — w:lvlOverride/w:startOverride у этого списка.
+    """
     numbering = doc.part.numbering_part.element
-    abstract = parse_xml(abstract_xml)
-    first_num = numbering.find(qn("w:num"))
-    if first_num is not None:
-        first_num.addprevious(abstract)
-    else:
-        numbering.append(abstract)
+    if abstract_xml:
+        abstract = parse_xml(abstract_xml)
+        first_num = numbering.find(qn("w:num"))
+        if first_num is not None:
+            first_num.addprevious(abstract)
+        else:
+            numbering.append(abstract)
+    overrides = "".join(f'<w:lvlOverride w:ilvl="{il}"><w:startOverride w:val="{st}"/></w:lvlOverride>'
+                        for il, st in (start_overrides or {}).items())
     numbering.append(parse_xml(
-        f'<w:num {nsdecls("w")} w:numId="{num_id}"><w:abstractNumId w:val="{abstract_id}"/></w:num>'))
+        f'<w:num {nsdecls("w")} w:numId="{num_id}"><w:abstractNumId w:val="{abstract_id}"/>{overrides}</w:num>'))
 
 
 def _set_num(p, num_id: int, ilvl: int) -> None:
@@ -486,11 +496,138 @@ def make_vystavka(path: str) -> None:
     wb.save(path)
 
 
+# ---------------------------------------------------------------------------
+# 5. Форум (всё ТЗ в одной таблице, автонумерация внутри ячеек)
+# ---------------------------------------------------------------------------
+
+def _multilevel(aid: int, starts: tuple[int, int, int]) -> str:
+    """Многоуровневый список «%1.» / «%1.%2.» / «%1.%2.%3.» с заданными стартами уровней."""
+    lv = []
+    for il, (text, st) in enumerate(zip(("%1.", "%1.%2.", "%1.%2.%3."), starts)):
+        lv.append(f'<w:lvl w:ilvl="{il}"><w:start w:val="{st}"/><w:numFmt w:val="decimal"/>'
+                  f'<w:lvlText w:val="{text}"/><w:lvlJc w:val="left"/></w:lvl>')
+    return (f'<w:abstractNum {nsdecls("w")} w:abstractNumId="{aid}"><w:multiLevelType w:val="multilevel"/>'
+            + "".join(lv) + "</w:abstractNum>")
+
+
+FORUM_BULLETS = f"""<w:abstractNum {nsdecls('w')} w:abstractNumId="95">
+  <w:multiLevelType w:val="hybridMultilevel"/>
+  <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/>
+    <w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl>
+</w:abstractNum>"""
+
+
+def make_forum(path: str) -> None:
+    doc = _base_document(size=11)
+    # 3.x — список, у которого уровень 0 начинается с 1, но в этом документе переопределён на 3
+    _add_numbering(doc, _multilevel(92, (1, 1, 1)), 92, 92, start_overrides={0: 3, 1: 1})
+    # 5.2… — уровень 0 начинается с 5, уровень 1 — сразу со 2 (продолжение ручной нумерации 5.1)
+    _add_numbering(doc, _multilevel(93, (5, 2, 1)), 93, 93)
+    # 6.x — тот же приём, что у 3.x, но со стартом 6
+    _add_numbering(doc, _multilevel(94, (1, 1, 1)), 94, 94, start_overrides={0: 6, 1: 1})
+    _add_numbering(doc, FORUM_BULLETS, 95, 95)
+
+    _header_block(doc, ["УТВЕРЖДАЮ", "Генеральный директор", CUSTOMER, "__________ / А.А. Образцов",
+                        "«___» __________ 2026 г."])
+    _para(doc, "ТЕХНИЧЕСКОЕ ЗАДАНИЕ", bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, size=14, space_after=0)
+    _para(doc, "на оказание услуг по организации и проведению отраслевого форума «Пример-Форум 2026»",
+          align=WD_ALIGN_PARAGRAPH.CENTER)
+
+    # Строки: (№, раздел, [абзацы ячейки]); абзац — строка (номер набран вручную или без номера)
+    # или кортеж (текст, numId, ilvl) для автонумерации; «\n» в тексте — ручной перенос строки.
+    rows = [
+        ("1.", "Наименование услуги", [
+            "1.1. Исполнитель оказывает услуги по организации и проведению отраслевого форума для субъектов "
+            "малого бизнеса (далее — Форум).",
+        ]),
+        ("2.", "Цель", [
+            "2.1. Обеспечить участие в Форуме не менее 300 участников, в том числе:",
+            "- предпринимателей;",
+            "- представителей отраслевых ассоциаций.",
+            "2.2. Провести не менее 6 деловых сессий.",
+        ]),
+        ("3.", "Место и формат оказания услуг", [
+            ("Услуги оказываются в очном формате на площадке, согласованной с Заказчиком.", 92, 1),
+            ("Онлайн-трансляция Форума ведётся на сайте Заказчика.", 92, 1),
+        ]),
+        ("4.", "Сроки оказания услуг", [
+            "4.1. Срок оказания услуг — с даты заключения Договора по 30 ноября 2026 г.",
+            "4.2. Дата проведения Форума — 20 ноября 2026 г.",
+        ]),
+        ("5.", "Требования к оказываемым услугам", [
+            "5.1. Исполнитель обеспечивает площадку для проведения Форума.",
+            "5.1.1. Общая площадь площадки — не менее 900 кв. м.",
+            "5.1.2. Оснащение главного зала:",
+            "- не менее 300 посадочных мест;",
+            "- сцена размером не менее 8×5 м;",
+            "- светодиодный экран 6×3 м;",
+            "- акустическая система — не менее 8 шт.",
+            "Перечень оборудования согласовывается с Заказчиком.",
+            "5.1.2.1. Резервное оборудование:",
+            "1. Резервный ноутбук с презентациями.",
+            "2. Запасные радиомикрофоны — 2 шт.",
+            ("Исполнитель обеспечивает регистрацию участников.", 93, 1),
+            ("Регистрация ведётся на сайте Форума.", 93, 2),
+            ("На входе работает стойка регистрации с бейджами.", 93, 2),
+            ("Исполнитель размещает логотип Форума:", 93, 1),
+            ("на всех экранах площадки;", 95, 0),
+            ("в окне онлайн-трансляции.", 95, 0),
+            ("Подтверждение участия отправляется на почту.\nПовторное письмо — за сутки до Форума.", 93, 2),
+            "5.4. Исполнитель организует кофе-брейк для 300 участников.",
+        ]),
+        ("6.", "Требования к отчёту", [
+            ("Исполнитель предоставляет Заказчику отчёт, включающий:", 94, 1),
+            ("Список участников Форума.", 94, 2),
+            ("Скриншоты в количестве 15 штук, подтверждающие публикации о Форуме.", 94, 2),
+            ("Фотографии, сгруппированные по каждому мероприятию Форума, — не менее 10 по каждой сессии.",
+             94, 2),
+            ("Видеозапись главной сессии Форума.", 94, 2),
+            "6.1.5. Акт оказанных услуг.",
+            ("Отчёт согласовывается с Заказчиком в течение 5 рабочих дней.", 94, 1),
+        ]),
+        ("7.", "Ответственные лица", [
+            "От Заказчика: Образцов А.А., тел. +7 (000) 000-00-00.",
+            "От Исполнителя: Примерный Г.Г., тел. +7 (000) 000-00-01.",
+        ]),
+    ]
+    table = doc.add_table(rows=1 + len(rows), cols=3)
+    table.style = "Table Grid"
+    widths = [Cm(1.4), Cm(4.0), Cm(11.6)]
+    for i, h in enumerate(("№ п/п", "Наименование раздела", "Требования к оказанию услуг по Договору")):
+        c = table.cell(0, i)
+        r = c.paragraphs[0].add_run(h)
+        r.bold = True
+        _shade(c, "D9E2F3")
+    for ri, (num, name, paras) in enumerate(rows, start=1):
+        table.cell(ri, 0).paragraphs[0].add_run(num)
+        table.cell(ri, 1).paragraphs[0].add_run(name)
+        cell = table.cell(ri, 2)
+        for k, entry in enumerate(paras):
+            p = cell.paragraphs[0] if k == 0 else cell.add_paragraph()
+            text, num_id, ilvl = (entry, None, None) if isinstance(entry, str) else entry
+            for j, part in enumerate(text.split("\n")):
+                if j:
+                    p.runs[-1].add_break()
+                p.add_run(part)
+            if num_id is not None:
+                _set_num(p, num_id, ilvl)
+    for row in table.rows:
+        for i, w in enumerate(widths):
+            row.cells[i].width = w
+    _para(doc, "")
+    _para(doc, f"Заказчик: {CUSTOMER}  __________ / А.А. Образцов")
+    _para(doc, f"Исполнитель: {CONTRACTOR}  __________ / Г.Г. Примерный")
+    doc.core_properties.title = "ТЗ на организацию форума (образец)"
+    doc.core_properties.author = "ФотоОтчёт — образец"
+    doc.save(path)
+
+
 def main(out_dir: str = HERE) -> list[str]:
     os.makedirs(out_dir, exist_ok=True)
     paths = []
     for name, fn in (("tz_banket.docx", make_banket), ("tz_montazh.docx", make_montazh),
-                     ("tz_uborka.pdf", make_uborka), ("tz_vystavka.xlsx", make_vystavka)):
+                     ("tz_uborka.pdf", make_uborka), ("tz_vystavka.xlsx", make_vystavka),
+                     ("tz_forum_table.docx", make_forum)):
         p = os.path.join(out_dir, name)
         fn(p)
         paths.append(p)

@@ -11,9 +11,9 @@ import datetime as _dt
 import io
 import os
 
-from .common import (STATUS_COLORS, STATUS_LABELS, STATUS_TINTS, ImageCache, PhotoIndex, fmt_date, item_label,
-                     norm_options, only_status_text, period_text, photo_caption, qty_text, same_text, section_info,
-                     select_items, status_key, summary)
+from .common import (STATUS_COLORS, STATUS_LABELS, STATUS_TINTS, ImageCache, PhotoIndex, file_label, fmt_date,
+                     is_web_link, item_extra, item_label, norm_options, only_status_text, period_text,
+                     photo_caption, qty_text, same_text, section_info, select_items, status_key, summary)
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_CANDIDATES: list[tuple[str, str]] = [
@@ -76,6 +76,14 @@ def _x(s) -> str:
     """Экранирование для Paragraph reportlab (мини-разметка)."""
     return (str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace("\n", "<br/>"))
+
+
+def _link(url: str) -> str:
+    """Ссылка для Paragraph: кликабельная только для http, https, mailto."""
+    if not is_web_link(url):
+        return _x(url)
+    href = url.replace("&", "&amp;").replace('"', "&quot;").replace("<", "%3C").replace(">", "%3E")
+    return f'<a href="{href}" color="#1A73E8"><u>{_x(url)}</u></a>'
 
 
 def export_pdf(project: dict, project_dir: str, out_path: str, options: dict | None = None) -> str:
@@ -162,6 +170,8 @@ def export_pdf(project: dict, project_dir: str, out_path: str, options: dict | N
         rows.append([Paragraph("Разделов ТЗ (заголовков)", small), Paragraph(str(s["sections"]), right)])
     rows.append([Paragraph("Готовность", cell_b), Paragraph(f"{round(s['progress'] * 100)} %", right)])
     rows.append([Paragraph("Фото всего", cell), Paragraph(str(s["photos"]), right)])
+    if s.get("files"):
+        rows.append([Paragraph("Файлов (документы, видео)", cell), Paragraph(str(s["files"]), right)])
     rows.append([Paragraph("в пунктах ТЗ / без пункта", small),
                  Paragraph(f"{s['photos_in_items']} / {s['photos_unsorted']}", right)])
     t = Table(rows, colWidths=[70 * mm, 28 * mm], hAlign="LEFT")
@@ -202,10 +212,12 @@ def export_pdf(project: dict, project_dir: str, out_path: str, options: dict | N
         st = cell_b if level == 1 else cell
         indent = ParagraphStyle(f"ind{level}", parent=st, leftIndent=3.5 * mm * (level - 1))
         n = len(idx.for_item(it))
+        nf = len(idx.files_for(it))
+        shown = (f"{n} + {nf} ф." if nf else str(n)) if (n or nf) else "—"
         data.append([Paragraph(_x(it.get("num") or ""), st), Paragraph(_x(it.get("title") or it.get("text") or ""), indent),
                      Paragraph(_x(qty_text(it)), cell), Paragraph(status_html(key, 7.6), cell),
                      Paragraph(_x(fmt_date(it.get("done_at"))), cell),
-                     Paragraph(str(n) if n else "—", center)])
+                     Paragraph(shown, center)])
         tstyle.append(("BACKGROUND", (3, r), (3, r), c(STATUS_TINTS[key])))
     t = Table(data, colWidths=widths, repeatRows=1)
     t.setStyle(TableStyle(tstyle))
@@ -251,19 +263,41 @@ def export_pdf(project: dict, project_dir: str, out_path: str, options: dict | N
             story += [CondPageBreak(30 * mm), head]
             continue
         block = [head]
+        files = idx.files_for(it)
+        ex = item_extra(it)
+        if ex["section"]:
+            block.append(Paragraph(f'<font name="{bold}">Раздел:</font> {_x(ex["section"])}', muted))
         text = (it.get("text") or "").strip()
         if text and not same_text(text, it.get("title") or ""):
             block.append(Paragraph(_x(text), muted))
+        if ex["required"]:
+            box = Table([[Paragraph(f'<font name="{bold}" color="#7A4A00">Что приложить:</font> {_x(ex["required"])}',
+                                    base)]], colWidths=[usable])
+            box.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), c("FEF7E0")),
+                                     ("LINEBEFORE", (0, 0), (0, -1), 2.5, c("F9AB00")),
+                                     ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                                     ("LEFTPADDING", (0, 0), (-1, -1), 7)]))
+            block += [Spacer(1, 1.5 * mm), box, Spacer(1, 1.5 * mm)]
+        if ex["note"]:
+            block.append(Paragraph(f'<font name="{bold}">Комментарий анализа:</font> <i>{_x(ex["note"])}</i>', muted))
         meta = [status_html(key)]
         if it.get("done_at"):
             meta.append(_x(fmt_date(it.get("done_at"))))
         if qty_text(it):
             meta.append("объём: " + _x(qty_text(it)))
         meta.append(f"фото: {len(photos)}")
+        if files:
+            meta.append(f"файлов: {len(files)}")
         block.append(Paragraph('<font color="#5F6368">  ·  </font>'.join(meta),
                                ParagraphStyle("meta", parent=base, spaceBefore=2, spaceAfter=2)))
         if (it.get("comment") or "").strip():
             block.append(Paragraph(f'<font name="{bold}">Комментарий:</font> <i>{_x(it["comment"].strip())}</i>', muted))
+        if ex["links"]:
+            block.append(Paragraph(f'<font name="{bold}">Ссылки:</font><br/>' + "<br/>".join(_link(u) for u in ex["links"]),
+                                   muted))
+        if files:
+            block.append(Paragraph(f'<font name="{bold}">Файлы:</font><br/>'
+                                   + "<br/>".join("• " + _x(file_label(f)) for f in files), muted))
         tb = photo_table(photos) if photos else None
         if tb is not None:
             # заголовок пункта не должен оставаться внизу страницы без фото
@@ -271,19 +305,24 @@ def export_pdf(project: dict, project_dir: str, out_path: str, options: dict | N
             story.append(KeepTogether(block + [Spacer(1, 2 * mm)]))
             story.append(tb)
         else:
-            if key != "na":
+            if key != "na" and not files:
                 block.append(Paragraph("Фото не приложены." if not photos else "Файлы фото не найдены.", note))
             story.append(KeepTogether(block))
 
     if opts["include_unsorted"]:
         loose = idx.unsorted()
+        loose_files = idx.unsorted_files()
+        if loose or loose_files:
+            story += [PageBreak(), Paragraph("Фото без пункта ТЗ", h1)]
         if loose:
-            story += [PageBreak(), Paragraph("Фото без пункта ТЗ", h1),
-                      Paragraph(f"Фото, которые не отнесены ни к одному пункту: {len(loose)}.", small),
+            story += [Paragraph(f"Фото, которые не отнесены ни к одному пункту: {len(loose)}.", small),
                       Spacer(1, 3 * mm)]
             tb = photo_table(loose)
             if tb is not None:
                 story.append(tb)
+        if loose_files:
+            story.append(Paragraph(f'<font name="{bold}">Файлы без пункта ТЗ:</font><br/>'
+                                   + "<br/>".join("• " + _x(file_label(f)) for f in loose_files), muted))
 
     # --- Колонтитул «стр. N из M» ------------------------------------------------------
     class NumberedCanvas(rl_canvas.Canvas):

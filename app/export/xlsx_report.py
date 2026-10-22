@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import os
 
-from .common import (STATUS_COLORS, STATUS_TINTS, PhotoIndex, parse_dt, photo_datetime, quality_text, status_key,
-                     status_label)
+from .common import (STATUS_COLORS, STATUS_TINTS, PhotoIndex, item_extra, parse_dt, photo_datetime, quality_text,
+                     status_key, status_label)
 
 _FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
 
@@ -47,9 +47,28 @@ def export_xlsx(project: dict, project_dir: str, out_path: str) -> str:
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
     wrap_top = Alignment(vertical="top", wrap_text=True)
 
-    headers = ["№", "Пункт ТЗ", "Кол-во", "Ед.", "Статус", "Дата", "Комментарий", "Фото, шт.", "Файлы фото"]
-    widths = [8, 60, 10, 8, 15, 12, 40, 9, 50]
-    for c, (h, w) in enumerate(zip(headers, widths), start=1):
+    extras = [item_extra(it) for it in items]
+    has = {k: any(e[k] for e in extras) for k in ("section", "required", "note", "links")}
+    has["files"] = bool(idx.files)
+    # (ключ, заголовок, ширина); необязательные колонки — только если в проекте есть такие данные
+    cols = [("num", "№", 8)]
+    if has["section"]:
+        cols.append(("section", "Раздел", 24))
+    cols.append(("title", "Пункт ТЗ", 60))
+    if has["required"]:
+        cols.append(("required", "Что приложить", 45))
+    cols += [("qty", "Кол-во", 10), ("unit", "Ед.", 8), ("status", "Статус", 15), ("date", "Дата", 12),
+             ("comment", "Комментарий", 40)]
+    if has["note"]:
+        cols.append(("note", "Комментарий анализа", 40))
+    if has["links"]:
+        cols.append(("links", "Ссылки", 40))
+    cols.append(("photos", "Фото, шт.", 9))
+    if has["files"]:
+        cols.append(("files", "Файлов", 9))
+    cols.append(("photo_names", "Файлы фото", 50))
+    col = {key: i for i, (key, _h, _w) in enumerate(cols, start=1)}
+    for c, (_key, h, w) in enumerate(cols, start=1):
         cell = _put(ws, 1, c, h)
         cell.font = head_font
         cell.fill = head_fill
@@ -57,34 +76,42 @@ def export_xlsx(project: dict, project_dir: str, out_path: str) -> str:
         cell.border = border
         ws.column_dimensions[get_column_letter(c)].width = w
 
-    for r, it in enumerate(items, start=2):
+    for r, (it, ex) in enumerate(zip(items, extras), start=2):
         st = status_key(it)
         photos = idx.for_item(it)
         level = int(it.get("level") or 1)
-        qty_val = it.get("qty")
         done = parse_dt(it.get("done_at"))
-        values = [it.get("num") or "", it.get("title") or it.get("text") or "", qty_val, it.get("unit") or "",
-                  status_label(st), done if done else (it.get("done_at") or ""), it.get("comment") or "",
-                  len(photos), "; ".join(p.get("name") or p.get("id") for p in photos)]
-        for c, v in enumerate(values, start=1):
-            cell = _put(ws, r, c, v)
+        values = {
+            "num": it.get("num") or "", "section": ex["section"], "title": it.get("title") or it.get("text") or "",
+            "required": ex["required"], "qty": it.get("qty"), "unit": it.get("unit") or "",
+            "status": status_label(st), "date": done if done else (it.get("done_at") or ""),
+            "comment": it.get("comment") or "", "note": ex["note"], "links": "\n".join(ex["links"]),
+            "photos": len(photos), "files": len(idx.files_for(it)),
+            "photo_names": "; ".join(p.get("name") or p.get("id") for p in photos),
+        }
+        for key, c in col.items():
+            cell = _put(ws, r, c, values[key])
             cell.border = border
             cell.alignment = wrap_top
-        title_cell = ws.cell(row=r, column=2)
+        title_cell = ws.cell(row=r, column=col["title"])
         title_cell.alignment = Alignment(vertical="top", wrap_text=True, indent=max(0, level - 1) * 2)
         if level == 1:
             title_cell.font = Font(bold=True)
-            ws.cell(row=r, column=1).font = Font(bold=True)
-        st_cell = ws.cell(row=r, column=5)
+            ws.cell(row=r, column=col["num"]).font = Font(bold=True)
+        st_cell = ws.cell(row=r, column=col["status"])
         st_cell.fill = PatternFill("solid", fgColor=STATUS_TINTS[st])
         st_cell.font = Font(bold=True, color=STATUS_COLORS[st])
         st_cell.alignment = Alignment(horizontal="center", vertical="top")
         if done:
-            ws.cell(row=r, column=6).number_format = "DD.MM.YYYY"
-        ws.cell(row=r, column=8).alignment = Alignment(horizontal="center", vertical="top")
+            ws.cell(row=r, column=col["date"]).number_format = "DD.MM.YYYY"
+        for key in ("photos", "files"):
+            if key in col:
+                ws.cell(row=r, column=col[key]).alignment = Alignment(horizontal="center", vertical="top")
+        if "required" in col and ex["required"]:
+            ws.cell(row=r, column=col["required"]).fill = PatternFill("solid", fgColor="FEF7E0")
     ws.freeze_panes = "A2"
     if items:
-        ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(items) + 1}"
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{len(items) + 1}"
 
     # Лист «Фото»
     ws2 = wb.create_sheet("Фото")

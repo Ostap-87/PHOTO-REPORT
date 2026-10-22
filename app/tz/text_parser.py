@@ -134,5 +134,6 @@ def parse_text(data: bytes, filename: str) -> dict:
     html.append("</div>")
     title, items = build_items(stream, title_from_filename(filename))
     warnings = [] if items else ["В тексте не найдено пунктов: добавьте их вручную."]
+    full_text = "\n".join(ln.rstrip() for ln in text.split("\n")).strip()
     return {"title": title, "kind": "txt", "items": items, "html": "\n".join(html), "pages": [],
-            "warnings": warnings}
+            "warnings": warnings, "full_text": full_text}

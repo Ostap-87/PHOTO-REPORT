@@ -21,7 +21,8 @@ from docx.text.hyperlink import Hyperlink
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
-from .common import Para, TableBlock, build_items, clean_text, esc, src_para, src_row, title_from_filename
+from .common import (Para, TableBlock, build_items, clean_text, esc, src_cell, src_para, src_row,
+                     title_from_filename)
 
 _RU_LETTERS = "абвгдежзиклмнопрстуфхцчшщэюя"  # как russianLower в Word (без ё, й, ъ, ы, ь)
 _EN_LETTERS = "abcdefghijklmnopqrstuvwxyz"
@@ -214,16 +215,22 @@ class WordNumbering:
                 return o["lvl"]
             return levels.get(i) or _Lvl(1, "decimal", f"%{i + 1}.")
 
+        def start_of(i: int) -> int:
+            # startOverride задаёт начало уровня для этого списка (w:num): и для счёта,
+            # и для показа «%1», если сам уровень ещё не встречался (4.1 при старте с ilvl=1)
+            o = ov.get(i)
+            if o and o["start"] is not None:
+                return o["start"]
+            return lv(i).start
+
         cnt = self.counters.setdefault(aid, [None] * 9)
         if num_id not in self.seen:
             self.seen.add(num_id)
             for i, o in ov.items():
-                if o["start"] is not None:
-                    cnt[i] = o["start"] - 1
-                elif o["lvl"] is not None:
+                if o["start"] is not None or o["lvl"] is not None:
                     cnt[i] = None
         L = lv(ilvl)
-        cnt[ilvl] = L.start if cnt[ilvl] is None else cnt[ilvl] + 1
+        cnt[ilvl] = start_of(ilvl) if cnt[ilvl] is None else cnt[ilvl] + 1
         for d in range(ilvl + 1, 9):
             r = lv(d).restart
             if r is None or (r != 0 and ilvl <= r - 1):
@@ -234,7 +241,7 @@ class WordNumbering:
         def rep(m: re.Match) -> str:
             k = int(m.group(1)) - 1
             Lk = lv(k)
-            v = cnt[k] if cnt[k] is not None else Lk.start
+            v = cnt[k] if cnt[k] is not None else start_of(k)
             fmt = "decimal" if L.is_lgl else Lk.fmt
             return format_counter(v, fmt)
 
@@ -387,71 +394,113 @@ def _iter_blocks(parent_el, parent_obj):
             yield from _iter_blocks(child, parent_obj)
 
 
-def _cell_content(cell: _Cell, numbering: WordNumbering) -> tuple[str, str, bool]:
-    """Текст ячейки (с автонумерацией), её HTML и признак «вся жирная»."""
-    texts, htmls, bolds = [], [], []
+def _plain_line(text: str, auto: tuple | None) -> str:
+    """Абзац для full_text: с номером автонумерации Word, маркированный — «- …»."""
+    if not auto:
+        return text
+    num, _ilvl, bullet = auto
+    if bullet:
+        return f"- {text}".rstrip()
+    return f"{num} {text}".strip() if num else text
+
+
+def _cell_content(cell: _Cell, numbering: WordNumbering, ti: int, ri: int, ci: int,
+                  pk: int) -> tuple[str, str, bool, list[Para], int, str]:
+    """Содержимое ячейки: текст (с автонумерацией), HTML, «вся жирная», абзацы (Para), счётчик абзацев
+    и текст для full_text (каждый абзац — с новой строки).
+
+    pk — сквозной номер абзаца в строке таблицы; каждый непустой абзац получает
+    data-src="t<ti>-r<ri>-p<pk>" (на него ссылается source.ref пунктов из ячейки).
+    Ручные переносы строк (w:br) сохраняются как перевод строки.
+    """
+    texts, htmls, bolds, paras, plain = [], [], [], [], []
     for p in cell.paragraphs:
+        k = pk
+        pk += 1
         t = clean_text(p.text)
-        h = _runs_html(p) if t else ""
         auto = numbering.for_paragraph(p)
-        if auto:
-            num, _ilvl, bullet = auto
-            mark = "•" if bullet else num
-            if mark and (t or not bullet):
-                t = f"{mark} {t}".strip()
-                h = f'<span class="tz-num">{esc(mark)}</span> {h}'.strip()
+        mark = ("•" if auto[2] else auto[0]) if auto else ""
+        # пустой абзац с автономером — обычная колонка «№» в Word: номер и есть содержимое
+        if not t and not (auto and not auto[2] and auto[0]):
+            continue
+        h = _runs_html(p) if t else ""
+        shown = t
+        if mark:
+            shown = f"{mark} {t}".strip()
+            h = f'<span class="tz-num">{esc(mark)}</span> {h}'.strip()
+        _rank, _is_title, sub = _heading_rank(p)
+        bold = _para_bold(p) if t else False
         if t:
-            texts.append(t)
-            htmls.append(h)
-            bolds.append(_para_bold(p))
+            paras.append(Para(text=t, src=src_cell(ti, ri, ci, k), bold=bold, auto=auto, sub_list=sub))
+        texts.append(shown)
+        plain.append(_plain_line(t, auto))
+        htmls.append(f'<p class="tz-cp" data-src="t{ti}-r{ri}-p{k}">{h}</p>')
+        if t:
+            bolds.append(bold)
     for inner in cell.tables:  # вложенные таблицы — построчно текстом
         for row in inner.rows:
             vals = [clean_text(c.text) for c in row.cells]
             line = " | ".join(dict.fromkeys(v for v in vals if v))
             if line:
                 texts.append(line)
-                htmls.append(esc(line))
+                plain.append(line)
+                htmls.append(f'<p class="tz-cp">{esc(line)}</p>')
                 bolds.append(False)
-    return "\n".join(texts), "<br>".join(htmls), bool(bolds) and all(bolds)
+    return "\n".join(texts), "".join(htmls), bool(bolds) and all(bolds), paras, pk, "\n".join(plain)
 
 
-def _table(table: Table, ti: int, numbering: WordNumbering) -> tuple[TableBlock, str]:
+def _table(table: Table, ti: int, numbering: WordNumbering) -> tuple[TableBlock, str, str]:
+    """Таблица → (TableBlock, HTML, текст для full_text: строка таблицы — ячейки через « | »)."""
     rows: list[list[str]] = []
+    plain_rows: list[str] = []
+    cell_paras: list[list[list[Para]]] = []
     srcs, merged, bold = [], [], []
     html = [f'<table class="tz-table" data-table="{ti}"><tbody>']
     for ri, tr in enumerate(table._tbl.tr_lst):
         cells: list[str] = []
+        cparas: list[list[Para]] = []
         tds: list[str] = []
         spans_text: list[tuple[str, int]] = []
         row_bold: list[bool] = []
+        row_plain: list[str] = []
+        pk = 0
         before = getattr(tr, "grid_before", 0) or 0
         for _ in range(before):
             cells.append("")
+            cparas.append([])
             tds.append("<td></td>")
         for tc in tr.tc_lst:
             span = max(1, tc.grid_span or 1)
             vmerge = tc.vMerge
             cell = _Cell(tc, table)
+            ci = len(cells)
             if vmerge == "continue":
-                text, chtml, cbold = "", "", False
+                text, chtml, cbold, paras, cplain = "", "", False, [], ""
             else:
-                text, chtml, cbold = _cell_content(cell, numbering)
+                text, chtml, cbold, paras, pk, cplain = _cell_content(cell, numbering, ti, ri, ci, pk)
+            row_plain.append(cplain)
             cells.append(text)
             cells.extend([""] * (span - 1))
+            cparas.append(paras)
+            cparas.extend([[] for _ in range(span - 1)])
             spans_text.append((text, span))
             if text:
                 row_bold.append(cbold)
             colspan = f' colspan="{span}"' if span > 1 else ""
             tds.append(f"<td{colspan}>{chtml}</td>")
         rows.append(cells)
+        cell_paras.append(cparas)
         srcs.append(src_row(ti, ri))
         nonempty = [(t, s) for t, s in spans_text if t]
         total = len(cells)
         merged.append(len(nonempty) == 1 and total > 1 and nonempty[0][1] >= max(2, total - before))
         bold.append(bool(row_bold) and all(row_bold))
         html.append(f'<tr data-src="t{ti}-r{ri}">{"".join(tds)}</tr>')
+        if any(row_plain):
+            plain_rows.append(" | ".join(row_plain))
     html.append("</tbody></table>")
-    return TableBlock(rows=rows, srcs=srcs, merged=merged, bold=bold), "".join(html)
+    return (TableBlock(rows=rows, srcs=srcs, merged=merged, bold=bold, cell_paras=cell_paras), "".join(html),
+            "\n".join(plain_rows))
 
 
 def parse_docx(data: bytes, filename: str) -> dict:
@@ -465,6 +514,7 @@ def parse_docx(data: bytes, filename: str) -> dict:
     html: list[str] = ['<div class="tz-doc tz-docx">']
     p_index = 0
     t_index = 0
+    full: list[str] = []   # весь текст документа по порядку — для full_text
     for block in _iter_blocks(document.element.body, document._body):
         if isinstance(block, Paragraph):
             idx = p_index
@@ -473,6 +523,7 @@ def parse_docx(data: bytes, filename: str) -> dict:
             auto = numbering.for_paragraph(block)
             if not text:
                 continue
+            full.append(_plain_line(text, auto))
             rank, is_title, sub = _heading_rank(block)
             align = _alignment(block)
             para = Para(text=text, src=src_para(idx), bold=_para_bold(block), heading=rank,
@@ -497,14 +548,17 @@ def parse_docx(data: bytes, filename: str) -> dict:
                 cls = "tz-li" if auto else "tz-p"
                 html.append(f'<p class="{cls}" data-src="p{idx}"{style}>{inner}</p>')
         else:
-            tb, thtml = _table(block, t_index, numbering)
+            tb, thtml, tplain = _table(block, t_index, numbering)
             t_index += 1
             stream.append(tb)
             html.append(thtml)
+            if tplain:
+                full.extend(["", tplain, ""])
     html.append("</div>")
     title, items = build_items(stream, title_from_filename(filename))
     warnings = []
     if not items:
         warnings.append("В документе не найдено пунктов: добавьте их вручную.")
+    full_text = re.sub(r"\n{3,}", "\n\n", "\n".join(full)).strip()
     return {"title": title, "kind": "docx", "items": items, "html": "\n".join(html),
-            "pages": [], "warnings": warnings}
+            "pages": [], "warnings": warnings, "full_text": full_text}

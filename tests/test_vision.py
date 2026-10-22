@@ -299,6 +299,14 @@ def test_dhash_near_duplicates_and_groups(tmp_path):
     assert dedup.groups([hs[0]]) == [] and dedup.groups([]) == []
 
 
+def test_dedup_groups_with_embeddings():
+    hs = [0, (1 << 10) - 1, (1 << 40) - 1]            # расстояния 10 и 40 — по dHash не дубли
+    e = np.array([[1, 0, 0], [0.99, 0.141, 0], [0.99, 0.141, 0]], np.float32)
+    assert dedup.groups(hs) == []
+    assert dedup.groups(hs, embs=e) == [[0, 1]]        # серия: близкий dHash + похожий смысл
+    assert dedup.groups(hs, embs=e, min_cos=0.999) == []
+
+
 def test_dedup_groups_transitive_and_best():
     hs = [0b0, 0b111, 0b111111, 1 << 40 | 0xFFFF]
     assert dedup.groups(hs, max_dist=3) == [[0, 1, 2]]
@@ -313,17 +321,17 @@ def test_clean_text_and_build_prompts():
         "Расстановка банкетных столов с текстилем"
     assert classify.clean_text("3) Монтаж сцены 6×4 м (1 компл.)") == "Монтаж сцены 6×4 м"
     assert classify.clean_text("Кабельные трассы в серверной, в количестве 4 шт") == "Кабельные трассы в серверной"
+    assert classify.clean_text("п. 4 Покраска стен — 120 м²") == "Покраска стен — 120 м²"   # площадь не трогаем
     item = {"num": "2.1", "title": "2.1 Брендирование входной группы", "hint": "баннер над входом",
             "text": "Брендирование входной группы баннером 3×2 м. Монтаж и демонтаж."}
     pr = classify.build_prompts(item)
-    assert "фото: Брендирование входной группы" in pr
-    assert "Брендирование входной группы" in pr
-    assert "на фото брендирование входной группы" in pr
-    assert "баннер над входом" in pr
-    assert any("3×2 м" in p for p in pr)
+    assert pr[:3] == ["Фотография: брендирование входной группы", "фото: Брендирование входной группы",
+                      "Снимок: брендирование входной группы"]
+    assert "Фотография: баннер над входом" in pr and "Снимок: баннер над входом" in pr
+    assert any("3×2 м" in p for p in pr) and not any("Монтаж и демонтаж" in p for p in pr)
     assert len(pr) == len({p.lower() for p in pr})
     assert classify.build_prompts({"num": "5"}) == ["пункт 5"]
-    assert classify.build_prompts({"title": "LED-экран"})[2] == "на фото LED-экран"
+    assert classify.build_prompts({"title": "LED-экран"})[0] == "Фотография: LED-экран"
 
 
 def _unit(v):
@@ -331,18 +339,18 @@ def _unit(v):
     return v / np.linalg.norm(v, axis=-1, keepdims=True)
 
 
-def _synthetic(n_items=4, per=6, dim=64, noise=0.2, seed=0):
+def _synthetic(n_items=4, per=6, dim=64, noise=0.2, seed=0, bad=None):
     """Эмбеддинги «как у CLIP»: тексты похожи друг на друга (общая часть), фото тоже (общий сдвиг);
     правильный текст ближе к фото всего на ~0.05 косинуса, фото одного пункта похожи между собой."""
     rng = np.random.default_rng(seed)
-    common_t, common_x = _unit(rng.normal(size=dim)), _unit(rng.normal(size=dim))
-    r = _unit(rng.normal(size=(n_items, dim)))          # смысл пункта (текст и фото)
-    v = _unit(rng.normal(size=(n_items, dim)))          # «как выглядит» пункт (только фото)
-
-    def text(rj):
-        return _unit(0.9 * common_t + 0.44 * rj + 0.05 * rng.normal(size=(3, dim)) / np.sqrt(dim) * 8)
-
-    texts = {f"it{j}": text(r[j]) for j in range(n_items)}
+    basis = np.linalg.qr(rng.normal(size=(dim, dim)))[0].T     # ортонормированные направления
+    common_t, common_x = basis[0], basis[1]
+    r = basis[2:2 + n_items]                                    # смысл пункта (текст и фото)
+    v = basis[2 + n_items:2 + 2 * n_items]                      # «как выглядит» пункт (только фото)
+    texts = {f"it{j}": _unit(0.9 * common_t + 0.44 * r[j] + 0.03 * rng.normal(size=(3, dim)))
+             for j in range(n_items)}
+    if bad is not None:   # неудачная формулировка пункта: общая «текстовая» часть есть, смысла нет
+        texts[bad] = _unit(0.9 * common_t + 0.44 * basis[2 + 2 * n_items] + 0.03 * rng.normal(size=(3, dim)))
     photos, labels = [], []
     for j in range(n_items):
         for _ in range(per):
@@ -350,12 +358,6 @@ def _synthetic(n_items=4, per=6, dim=64, noise=0.2, seed=0):
             photos.append(_unit(x))
             labels.append(f"it{j}")
     return np.stack(photos), texts, labels
-
-
-def _bad_text(dim, seed=9):
-    """Неудачная формулировка пункта: общая «текстовая» часть есть, смысла нет."""
-    rng = np.random.default_rng(seed)
-    return _unit(rng.normal(size=(3, dim)))
 
 
 def test_classify_zero_shot_structure_and_accuracy():
@@ -376,7 +378,9 @@ def test_classify_zero_shot_structure_and_accuracy():
 
 def test_classify_thresholds_send_to_unsorted():
     X, T, _ = _synthetic()
-    res = classify.classify(X, T, {}, {"threshold": 0.99, "margin": 0.0})
+    res = classify.classify(X, T, {}, {"threshold": 1.01, "margin": 0.0})
+    assert all(r["item_id"] is None for r in res)
+    res = classify.classify(X, T, {}, {"threshold": 0.0, "margin": 1.01})
     assert all(r["item_id"] is None for r in res)
     res = classify.classify(X, T, {}, {"threshold": 0.0, "margin": 0.0})
     assert all(r["item_id"] is not None for r in res)
@@ -384,10 +388,7 @@ def test_classify_thresholds_send_to_unsorted():
 
 def test_classify_examples_fix_mistakes():
     # текст пункта it1 «не похож» на свои фото — без примеров они уходят не туда
-    X, T, y = _synthetic(seed=4)
-    T_bad = dict(T)
-    common = _unit(np.mean([t.mean(0) for t in T.values()], axis=0))
-    T_bad["it1"] = _unit(0.9 * common + 0.44 * _bad_text(X.shape[1]))
+    X, T_bad, y = _synthetic(seed=4, bad="it1")
     before = classify.classify(X, T_bad, {}, {})
     idx1 = [i for i, t in enumerate(y) if t == "it1"]
     acc_before = np.mean([before[i]["suggestions"][0][0] == "it1" for i in idx1])

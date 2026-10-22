@@ -129,9 +129,17 @@ def parse_pdf(data: bytes, filename: str) -> dict:
     page_tables: list[list] = []
     sizes: list[tuple[float, float]] = []
     empty_pages = []
+    page_texts: list[str] = []
     for pno in range(min(n_pages, MAX_PAGES)):
         page = doc[pno]
         pages.append(page.get_pixmap(dpi=PAGE_DPI).tobytes("png"))
+        try:
+            ptext = page.get_text("text", sort=True)
+        except Exception:  # noqa: BLE001
+            ptext = page.get_text("text")
+        lines = [re.sub(r"[ \t\u00a0]+", " ", ln).strip() for ln in ptext.splitlines()]
+        ptext = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+        page_texts.append(f"--- стр. {pno + 1} ---\n{ptext}".rstrip())
         sizes.append((page.rect.width, page.rect.height))
         lines = _raw_lines(page)
         if not lines and page.get_images():
@@ -140,6 +148,7 @@ def parse_pdf(data: bytes, filename: str) -> dict:
         page_lines.append(lines)
         page_tables.append(tabs)
 
+    full_text = "\n\n".join(page_texts)
     total_chars = sum(len(ln["text"].replace(" ", "")) for pl in page_lines for ln in pl)
     title_guess = title_from_filename(filename)
     meta_title = one_line((doc.metadata or {}).get("title", ""))
@@ -149,7 +158,7 @@ def parse_pdf(data: bytes, filename: str) -> dict:
         doc.close()
         warnings.append("Похоже на скан: в PDF нет текстового слоя. Пункты ТЗ нужно добавить вручную.")
         return {"title": title_guess, "kind": "pdf", "items": [], "html": None, "pages": pages,
-                "warnings": warnings}
+                "warnings": warnings, "full_text": full_text}
     if empty_pages:
         warnings.append("Страницы без текста (сканы): " + ", ".join(map(str, empty_pages))
                         + " — пункты с них нужно добавить вручную.")
@@ -272,4 +281,5 @@ def parse_pdf(data: bytes, filename: str) -> dict:
     title, items = build_items(stream, title_guess)
     if not items:
         warnings.append("В PDF не найдено пунктов: добавьте их вручную.")
-    return {"title": title, "kind": "pdf", "items": items, "html": None, "pages": pages, "warnings": warnings}
+    return {"title": title, "kind": "pdf", "items": items, "html": None, "pages": pages, "warnings": warnings,
+            "full_text": full_text}

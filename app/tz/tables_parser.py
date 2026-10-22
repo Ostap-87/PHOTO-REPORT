@@ -67,6 +67,23 @@ def _merged_rows(sheet: _Sheet) -> list[bool]:
     return out
 
 
+def sheets_text(sheets: list[_Sheet]) -> str:
+    """full_text таблицы: строка — ячейки через « | » (переносы внутри ячейки — « / »)."""
+    out = []
+    for sh in sheets:
+        if len(sheets) > 1:
+            out.append(f"--- лист «{sh.name}» ---")
+        for row in sh.rows:
+            cells = [" / ".join(ln.strip() for ln in c.splitlines() if ln.strip()) for c in row]
+            while cells and not cells[-1]:
+                cells.pop()
+            if cells:
+                out.append(" | ".join(cells))
+        if len(sheets) > 1:
+            out.append("")
+    return "\n".join(out).strip()
+
+
 def _build(sheets: list[_Sheet], kind: str, filename: str) -> dict:
     html = ['<div class="tz-doc tz-sheet">']
     stream: list = []
@@ -104,7 +121,7 @@ def _build(sheets: list[_Sheet], kind: str, filename: str) -> dict:
     if not items:
         warnings.append("В таблице не найдено пунктов: добавьте их вручную.")
     return {"title": title, "kind": kind, "items": items, "html": "\n".join(html), "pages": [],
-            "warnings": warnings}
+            "warnings": warnings, "full_text": sheets_text(sheets)}
 
 
 def parse_xlsx(data: bytes, filename: str) -> dict:

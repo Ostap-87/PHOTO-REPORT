@@ -15,7 +15,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from app.export import export_docx, export_pdf, export_xlsx, export_zip, folder_name, folder_names  # noqa: E402
+from app.export import (export_docx, export_pdf, export_registry_xlsx, export_xlsx, export_zip,  # noqa: E402
+                        folder_name, folder_names)
 from app.tz import parse_tz  # noqa: E402
 from app.tz.common import extract_qty, make_title  # noqa: E402
 
@@ -75,7 +76,7 @@ def test_banket_docx_word_numbering():
     items = res["items"]
     assert res["kind"] == "docx"
     assert "банкета" in res["title"].lower() and res["title"].startswith("Техническое задание")
-    assert len(items) == 38
+    assert len(items) == 35
     assert {it["level"] for it in items} == {1, 2, 3}
     assert [it["num"] for it in items[:5]] == ["1", "1.1", "1.2", "1.3", "2"]
     nums = _by_num(items)
@@ -86,10 +87,11 @@ def test_banket_docx_word_numbering():
     assert nums["4.1"]["qty"] is None  # «4 кВт» — параметр, а не количество
     assert nums["1.1"]["title"] == "Круглые банкетные столы диаметром 1,8 м — 12 шт"
     assert "Расстановка по схеме" in nums["1.1"]["text"]
-    # маркированный список под 7.1 — уровень 3, без номера
+    # маркированный список Word под нумерованным 7.1 — это текст пункта, а не отдельные пункты
     i71 = items.index(nums["7.1"])
-    assert [(it["num"], it["level"]) for it in items[i71 + 1:i71 + 4]] == [("", 3)] * 3
-    assert items[i71 + 1]["title"] == "Холодные закуски и салаты"
+    assert items[i71 + 1]["num"] == "7.2"
+    assert nums["7.1"]["text"].split("\n")[1:] == [
+        "• холодные закуски и салаты;", "• горячее блюдо на выбор гостя;", "• десерт и торт."]
     # шапка и подписи пунктами не стали
     joined = " ".join(it["text"] for it in items)
     assert "УТВЕРЖДАЮ" not in joined and "__________" not in joined and "Дата проведения" not in joined
@@ -129,7 +131,7 @@ def test_uborka_pdf():
     assert res["kind"] == "pdf" and res["html"] is None
     assert len(res["pages"]) == 2 and all(p.startswith(b"\x89PNG") for p in res["pages"])
     assert "уборке" in res["title"]
-    assert len(items) == 21
+    assert len(items) == 18
     assert {it["level"] for it in items} == {1, 2}
     nums = _by_num(items)
     assert (nums["1.1"]["qty"], nums["1.1"]["unit"]) == (850, "м²")
@@ -138,6 +140,7 @@ def test_uborka_pdf():
     assert nums["3.1"]["title"] == "Мытьё окон изнутри и снаружи"
     assert "охраны труда" in nums["3.1"]["text"]
     assert nums["а)"]["level"] == 2 and nums["б)"]["level"] == 2
+    assert "• Персонал в униформе" in nums["4"]["text"]  # маркеры под «4.» — текст пункта
     for it in items:
         src = it["source"]
         assert src["ref"] is None and src["page"] in (1, 2)
@@ -165,6 +168,65 @@ def test_vystavka_xlsx():
     _check_html_refs(res)
 
 
+def test_forum_table_docx_cells():
+    """ТЗ одной таблицей «№ | Раздел | Требования»: пункты из абзацев ячейки, автонумерация Word."""
+    res = parse_tz(_sample("tz_forum_table.docx"), "tz_forum_table.docx")
+    items = res["items"]
+    assert [it["num"] for it in items] == [
+        "1", "1.1", "2", "2.1", "2.2", "3", "3.1", "3.2", "4", "4.1", "4.2",
+        "5", "5.1", "5.1.1", "5.1.2", "5.1.2.1", "5.2", "5.2.1", "5.2.2", "5.3", "5.3.1", "5.4",
+        "6", "6.1", "6.1.1", "6.1.2", "6.1.3", "6.1.4", "6.1.5", "6.2", "7"]
+    assert all(it["level"] == it["num"].count(".") + 1 for it in items)
+    by = _by_num(items)
+    assert by["5"]["title"] == "Требования к оказываемым услугам" and by["5"]["source"]["ref"] == "t0-r5"
+    # маркеры «-», абзацы без номера и локальный список «1.», «2.» — текст пункта, а не пункты
+    assert by["5.1.2"]["text"].split("\n") == [
+        "Оснащение главного зала:", "- не менее 300 посадочных мест;", "- сцена размером не менее 8×5 м;",
+        "- светодиодный экран 6×3 м;", "- акустическая система — не менее 8 шт.",
+        "Перечень оборудования согласовывается с Заказчиком."]
+    assert by["5.1.2.1"]["text"].split("\n")[1:] == [
+        "1. Резервный ноутбук с презентациями.", "2. Запасные радиомикрофоны — 2 шт."]
+    assert by["5.3"]["text"].split("\n")[1:] == ["• на всех экранах площадки;", "• в окне онлайн-трансляции."]
+    # ручной перенос строки (w:br) сохраняется
+    assert by["5.3.1"]["text"] == "Подтверждение участия отправляется на почту.\nПовторное письмо — за сутки до Форума."
+    assert (by["6.1.2"]["qty"], by["6.1.2"]["unit"]) == (15, "шт")
+    assert by["6.1.3"]["title"].startswith("Фотографии, сгруппированные по каждому мероприятию")
+    assert by["7"]["text"].count("\n") == 2  # раздел без номеров в ячейке — один пункт с текстом
+    src = by["6.1.2"]["source"]
+    assert (src["kind"], src["ref"], src["row"], src["cell"]) == ("cell", "t0-r6-p4", 6, 2)
+    _check_html_refs(res)
+    assert 'data-src="t0-r5-p19"' in res["html"] and "<br>" in res["html"]
+    ft = res["full_text"]
+    assert "\n5. | Требования к оказываемым услугам | 5.1. Исполнитель обеспечивает площадку" in ft
+    for line in ("3.1. Услуги оказываются", "5.2.1. Регистрация ведётся", "6.1.2. Скриншоты в количестве 15 штук",
+                 "6.1.5. Акт оказанных услуг.", "6.2. Отчёт согласовывается", "- на всех экранах площадки;",
+                 "- предпринимателей;", "Повторное письмо — за сутки до Форума."):
+        assert "\n" + line in ft or "| " + line in ft, line  # абзац с новой строки или первый в ячейке
+    assert ft.index("5.1.2.1.") < ft.index("\n5.2. ") < ft.index("\n6.1.1.")
+
+
+def test_full_text_formats():
+    ft = parse_tz(_sample("tz_banket.docx"), "tz_banket.docx")["full_text"]
+    lines = ft.split("\n")
+    assert lines[0] == "УТВЕРЖДАЮ"
+    assert "1. Мебель и расстановка" in lines and "4.2.1. Комплект запасных батарей на весь период мероприятия." in lines
+    assert "- холодные закуски и салаты;" in lines  # маркированный список Word
+    ft = parse_tz(_sample("tz_montazh.docx"), "tz_montazh.docx")["full_text"]
+    assert "№ п/п | Наименование работ | Ед. изм. | Кол-во" in ft and "\nКабельные трассы\n" in ft
+    assert "1 | Прокладка кабеля витая пара U/UTP кат. 6 в гофрированной трубе | м | 1 850" in ft
+    ft = parse_tz(_sample("tz_uborka.pdf"), "tz_uborka.pdf")["full_text"]
+    assert ft.startswith("--- стр. 1 ---\nУТВЕРЖДАЮ") and "\n--- стр. 2 ---\n" in ft
+    assert ft.index("1.1. Влажная уборка") < ft.index("--- стр. 2 ---") < ft.index("4. Требования к исполнителю")
+    ft = parse_tz(_sample("tz_vystavka.xlsx"), "tz_vystavka.xlsx")["full_text"]
+    assert "№ п/п | Наименование | Описание / требования | Ед. изм. | Кол-во" in ft
+    assert "1.1 | Подиум высотой 100 мм с ковровым покрытием | серый ковролин, алюминиевая окантовка | м² | 36" in ft
+    assert "--- лист «Контакты» ---\nКонтактное лицо | Телефон | Почта" in ft
+    ft = parse_tz("Позиция;Наименование;Ед.;Кол-во\n1;Стол;шт;10\n".encode("cp1251"), "t.csv")["full_text"]
+    assert ft == "Позиция | Наименование | Ед. | Кол-во\n1 | Стол | шт | 10"
+    txt = "Техническое задание\r\n1. Пункт один\r\n- деталь  \r\n"
+    assert parse_tz(txt.encode(), "t.txt")["full_text"] == "Техническое задание\n1. Пункт один\n- деталь"
+
+
 def test_text_csv_markdown():
     txt = ("УТВЕРЖДАЮ\nДиректор\nТЕХНИЧЕСКОЕ ЗАДАНИЕ\nна уборку территории\n"
            "1. Уборка снега — 1 200 кв. м\nежедневно до 8:00.\n2. Вывоз снега\n2.1 Погрузка — 50 м3\n"
@@ -172,7 +234,8 @@ def test_text_csv_markdown():
     res = parse_tz(txt.encode("cp1251"), "tz.txt")
     assert res["kind"] == "txt" and res["title"] == "Техническое задание на уборку территории"
     got = [(it["num"], it["level"]) for it in res["items"]]
-    assert got == [("1", 1), ("2", 1), ("2.1", 2), ("2.2", 2), ("", 3), ("", 3)]
+    assert got == [("1", 1), ("2", 1), ("2.1", 2), ("2.2", 2)]
+    assert res["items"][3]["text"] == "Утилизация\n- талоны\n- акт"
     assert (res["items"][0]["qty"], res["items"][0]["unit"]) == (1200, "м²")
     assert "ежедневно" in res["items"][0]["text"]
     _check_html_refs(res)
@@ -183,7 +246,8 @@ def test_text_csv_markdown():
     res = parse_tz(md.encode(), "tz.md")
     got = [(it["num"], it["level"], it["title"]) for it in res["items"]]
     assert got[0] == ("", 1, "Работы")
-    assert ("1", 2, "Изготовление короба 3×1 м") in got and ("", 3, "Фрезеровка") in got
+    assert ("1", 2, "Изготовление короба 3×1 м") in got
+    assert "- фрезеровка" in res["items"][1]["text"]
     assert res["items"][-1]["source"]["ref"] == "t0-r1" and res["items"][-1]["unit"] == "компл"
     _check_html_refs(res)
 
@@ -387,7 +451,8 @@ def test_export_xlsx(project, tmp_path):
     wb = openpyxl.load_workbook(out)
     assert wb.sheetnames == ["Исполнение", "Фото"]
     ws = wb["Исполнение"]
-    assert [c.value for c in ws[1]][:5] == ["№", "Пункт ТЗ", "Кол-во", "Ед.", "Статус"]
+    assert [c.value for c in ws[1]] == ["№", "Пункт ТЗ", "Кол-во", "Ед.", "Статус", "Дата", "Комментарий",
+                                         "Фото, шт.", "Файлы фото"]  # без новых полей — прежние колонки
     row = [c.value for c in ws[3]]
     assert row[0] == "1.1" and row[2] == 12 and row[4] == "Выполнено" and row[7] == 3
     assert row[8] == "IMG_0001.JPG; IMG_0002.jpg; IMG_9999.jpg"
@@ -445,3 +510,135 @@ def test_export_from_parsed_tz(tmp_path):
         assert os.path.getsize(f(proj, str(pdir), str(tmp_path / fn), {})) > 1000
     assert os.path.getsize(export_xlsx(proj, str(pdir), str(tmp_path / "r.xlsx"))) > 1000
     assert len(zipfile.ZipFile(export_zip(proj, str(pdir), str(tmp_path / "r.zip"))).namelist()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Необязательные поля анализа ТЗ: раздел, «что приложить», комментарий, ссылки, файлы, реестр
+# ---------------------------------------------------------------------------
+
+SAFE_URL = "https://example.com/post?a=1&b=2"
+
+
+@pytest.fixture()
+def rich_project(project):
+    proj, pdir = project
+    items = {it["id"]: it for it in proj["items"]}
+    items["it2"].update(kind="registry", section="6. Требования к услугам",
+                        required="Фото расстановки столов, не менее 3 шт., JPG",
+                        note="=Уточнить у заказчика схему", links=[SAFE_URL, "javascript:alert(1)"])
+    items["it4"].update(kind="registry", num="6.8–6.12, 7.1.7", section="6. Требования к услугам",
+                        required="Скриншоты публикаций, PDF", note="")
+    items["it5"].update(kind="tz")
+    files_dir = os.path.join(pdir, "photos", "files")
+    os.makedirs(files_dir, exist_ok=True)
+    for fid, ext, data in (("f1", ".pdf", b"%PDF-1.4 test"), ("f2", ".mp4", b"\x00" * 64),
+                           ("f3", ".xlsx", b"PK test")):
+        with open(os.path.join(files_dir, fid + ext), "wb") as f:
+            f.write(data)
+    proj["files"] = [
+        {"id": "f1", "name": "Акт приёмки.pdf", "ext": ".pdf", "size": 120_000, "item_id": "it2", "added": "1"},
+        {"id": "f2", "name": "Видео сцены.mp4", "ext": ".mp4", "size": 35_000_000, "item_id": "it5", "added": "2"},
+        {"id": "f3", "name": "Список гостей.xlsx", "ext": ".xlsx", "size": 900, "item_id": None, "added": "3"},
+        {"id": "f_missing", "name": "Нет на диске.docx", "ext": ".docx", "size": 10, "item_id": "it2"},
+    ]
+    proj["clarify"] = [{"num": "6.40", "section": "6. Требования к услугам", "name": "Брендирование",
+                        "description": "Объём брендирования не указан", "reason": "+нет количества"}]
+    return proj, pdir
+
+
+def test_export_extra_fields_docx_pdf(rich_project, tmp_path):
+    from docx import Document
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+    import pymupdf
+
+    proj, pdir = rich_project
+    out = export_docx(proj, pdir, str(tmp_path / "r.docx"), {"include_unsorted": True})
+    doc = Document(out)
+    text = "\n".join(p.text for p in doc.paragraphs)
+    for t in ("Раздел: 6. Требования к услугам", "Что приложить: Фото расстановки столов, не менее 3 шт., JPG",
+              "Комментарий анализа: =Уточнить у заказчика схему", "Ссылки:", SAFE_URL, "Файлы:",
+              "Акт приёмки.pdf (117 КБ)", "Видео сцены.mp4 (33,4 МБ)", "Файлы без пункта ТЗ:", "Список гостей.xlsx",
+              "6.8–6.12, 7.1.7 Сцена 6×4 м"):
+        assert t in text, t
+    # порядок карточки: Раздел → Что приложить → комментарий анализа → статус → ссылки → файлы
+    i = text.index("Раздел: 6. Требования")
+    assert i < text.index("Что приложить: Фото") < text.index("Комментарий анализа") < text.index("Ссылки:") \
+        < text.index("Акт приёмки.pdf")
+    links = [r.target_ref for r in doc.part.rels.values() if r.reltype == RT.HYPERLINK]
+    assert links == [SAFE_URL]  # javascript: — только текстом
+    assert len(doc.inline_shapes) == 5
+
+    out = export_pdf(proj, pdir, str(tmp_path / "r.pdf"), {"include_unsorted": True})
+    pdf = pymupdf.open(out)
+    ptext = "".join(pg.get_text() for pg in pdf)
+    for t in ("Раздел:", "Что приложить:", "Комментарий анализа:", "Акт приёмки.pdf", "Видео сцены.mp4",
+              "Список гостей.xlsx", "javascript:alert(1)"):
+        assert t in ptext, t
+    uris = [ln.get("uri") for pg in pdf for ln in pg.get_links() if ln.get("uri")]
+    assert uris == [SAFE_URL]
+
+
+def test_export_extra_fields_xlsx_zip(rich_project, tmp_path):
+    import openpyxl
+
+    proj, pdir = rich_project
+    wb = openpyxl.load_workbook(export_xlsx(proj, pdir, str(tmp_path / "r.xlsx")))
+    ws = wb["Исполнение"]
+    head = [c.value for c in ws[1]]
+    assert head == ["№", "Раздел", "Пункт ТЗ", "Что приложить", "Кол-во", "Ед.", "Статус", "Дата", "Комментарий",
+                    "Комментарий анализа", "Ссылки", "Фото, шт.", "Файлов", "Файлы фото"]
+    row = {h: ws.cell(row=3, column=i + 1) for i, h in enumerate(head)}
+    assert row["Раздел"].value == "6. Требования к услугам"
+    assert row["Что приложить"].value.startswith("Фото расстановки")
+    assert row["Комментарий анализа"].value == "=Уточнить у заказчика схему"
+    assert row["Комментарий анализа"].data_type == "s"
+    assert row["Ссылки"].value == SAFE_URL + "\njavascript:alert(1)"
+    assert row["Файлов"].value == 2 and row["Фото, шт."].value == 3
+
+    names = zipfile.ZipFile(export_zip(proj, pdir, str(tmp_path / "r.zip"))).namelist()
+    fn = folder_names(proj)
+    assert f"{fn['it2']}/Акт приёмки.pdf" in names
+    assert f"{fn['it5']}/Видео сцены.mp4" in names  # папка появилась из-за файла, фото в пункте нет
+    assert "Неразобранное/Список гостей.xlsx" in names
+    assert not any("Нет на диске" in n for n in names)
+    assert fn["it4"].startswith("04 6.8–6.12, 7.1.7")
+
+
+def test_export_registry_xlsx(rich_project, tmp_path):
+    import openpyxl
+
+    proj, _pdir = rich_project
+    out = export_registry_xlsx(proj, str(tmp_path / "реестр.xlsx"))
+    wb = openpyxl.load_workbook(out)
+    assert wb.sheetnames == ["Реестр подтверждений", "Требуют уточнения"]
+    ws = wb["Реестр подтверждений"]
+    assert [c.value for c in ws[1]] == ["Пункт ТЗ", "Раздел", "Наименование", "Описание",
+                                         "Что конкретно должно быть приложено, в каком виде", "Комментарий"]
+    rows = [[c.value for c in r] for r in ws.iter_rows(min_row=2)]
+    assert [r[0] for r in rows] == ["1.1", "6.8–6.12, 7.1.7"]  # только kind == "registry"
+    assert rows[0][2] == "Столы круглые — 12 шт" and rows[0][3] == "Столы круглые — 12 шт. Расстановка по схеме."
+    note = ws.cell(row=2, column=6)
+    assert note.data_type == "s" and note.value.startswith("=")
+    assert note.fill.fgColor.rgb.endswith("FFF8C5")
+    assert ws.cell(row=3, column=6).fill.fgColor.rgb in ("00000000", None) or ws.cell(row=3, column=6).fill.fill_type is None
+    assert ws.cell(row=1, column=1).font.b and ws.cell(row=2, column=4).alignment.wrap_text
+    assert ws.freeze_panes == "A2" and ws.auto_filter.ref == "A1:F3"
+    assert not ws.merged_cells.ranges
+    assert ws.page_setup.orientation == "landscape" and int(ws.page_setup.paperSize) == 9
+    assert ws.sheet_properties.pageSetUpPr.fitToPage and ws.page_setup.fitToWidth == 1
+    ws2 = wb["Требуют уточнения"]
+    assert [c.value for c in ws2[1]] == ["Пункт ТЗ", "Раздел", "Наименование", "Описание",
+                                          "Причина неопределённости"]
+    assert [c.value for c in ws2[2]] == ["6.40", "6. Требования к услугам", "Брендирование",
+                                          "Объём брендирования не указан", "+нет количества"]
+    assert ws2.cell(row=2, column=5).data_type == "s"
+    with zipfile.ZipFile(out) as z:
+        assert "<f>" not in z.read("xl/worksheets/sheet1.xml").decode()
+
+    # без kind — все пункты; без clarify — один лист
+    plain = {"name": "П", "items": [{"id": "a", "num": "1", "title": "Стол", "text": "Стол"},
+                                    {"id": "b", "num": ["2.1", "2.2"], "title": "Стулья", "text": "Стулья белые"}]}
+    wb = openpyxl.load_workbook(export_registry_xlsx(plain, str(tmp_path / "r2.xlsx")))
+    assert wb.sheetnames == ["Реестр подтверждений"]
+    rows = [[c.value for c in r] for r in wb.active.iter_rows(min_row=2)]
+    assert rows == [["1", None, "Стол", None, None, None], ["2.1, 2.2", None, "Стулья", "Стулья белые", None, None]]

@@ -51,6 +51,15 @@ def src_para(index: int) -> dict:
     return {"kind": "para", "index": index, "page": None, "ref": f"p{index}"}
 
 
+def src_cell(table: int, row: int, cell: int, para: int) -> dict:
+    """Источник пункта — абзац внутри ячейки таблицы (data-src="t<table>-r<row>-p<para>").
+
+    para — номер абзаца в строке таблицы (сквозной по всем ячейкам строки, с 0).
+    """
+    return {"kind": "cell", "index": para, "table": table, "row": row, "cell": cell, "para": para,
+            "page": None, "ref": f"t{table}-r{row}-p{para}"}
+
+
 def src_row(table: int, row: int, page: int | None = None) -> dict:
     """Источник пункта — строка таблицы (data-src="t<table>-r<row>")."""
     return {"kind": "row", "index": row, "table": table, "row": row, "page": page,
@@ -116,6 +125,14 @@ def normalize_num(s: str) -> str:
     if re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){0,5}", s2):
         return s2
     return s
+
+
+def num_tuple(num: str) -> tuple | None:
+    """«6.2.3» → (6, 2, 3); не многоуровневый номер («а)», «II») → None."""
+    n = normalize_num(num or "")
+    if re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){0,5}", n):
+        return tuple(int(x) for x in n.split("."))
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +425,8 @@ class TableBlock:
     merged: list[bool] = field(default_factory=list)  # строка — одна объединённая ячейка
     bold: list[bool] = field(default_factory=list)
     name: str = ""                                    # имя листа Excel
+    # Абзацы ячеек (только .docx): [строка][колонка] -> [Para]; колонки выровнены как в rows.
+    cell_paras: list | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -421,8 +440,13 @@ class Outline:
     - ненумерованный заголовок (стиль Heading, жирный, «Раздел N», «I.») — уровень по рангу (1);
     - нумерованный пункт «1.2.3» — уровень заголовка + глубина номера, причём глубина
       отсчитывается от первого номера после заголовка (если под заголовком сразу «1.1», это уровень 2);
-    - «1)», «а)», «—» — относительные маркеры: на уровень глубже последнего нумерованного
+    - «1)», «а)» — относительные маркеры: на уровень глубже последнего нумерованного
       пункта; новый тип маркера уходит ещё глубже, уже встречавшийся — возвращается на свой уровень;
+    - маркеры «—», «•» (и маркированные списки Word) после нумерованного пункта — его детали
+      (перечень оборудования и т. п.): дописываются в текст пункта; под ненумерованным
+      заголовком — становятся подпунктами;
+    - локальный список «1.», «2.» внутри глубокого пункта (после «6.2.6.1») — тоже текст пункта;
+      внутри ячейки таблицы-раздела «6» текстом считается всё, что не начинается с «6.»;
     - абзац без маркера после пункта дописывается в его текст; два и больше коротких абзацев
       под заголовком становятся подпунктами;
     - в таблице строки-разделы — на уровень ниже текущего заголовка документа.
@@ -440,6 +464,9 @@ class Outline:
         self.stopped = False
         self._saved: tuple | None = None
         self.in_table = False
+        self.last_num: tuple | None = None   # последний номер «6.2.3» как (6, 2, 3)
+        self.anchor_num = False              # последний якорь — нумерованный пункт (не заголовок)
+        self.section: int | None = None      # номер раздела строки таблицы, пока разбираем её ячейку
 
     # -- служебное ---------------------------------------------------------
     def _add(self, num: str, level: int, text: str, src: dict, qty=None, unit: str = "",
@@ -448,6 +475,17 @@ class Outline:
               "unit": unit or "", "source": src, "_heading": heading}
         self.items.append(it)
         return it
+
+    def _append(self, text: str) -> None:
+        """Дописывает текст (с переносами строк) к последнему пункту."""
+        self.items[-1]["_paras"].extend(text.split("\n"))
+
+    def _is_local(self, comps: tuple) -> bool:
+        """Номер — не пункт ТЗ, а локальный список внутри текущего пункта."""
+        if self.section is not None:
+            return len(comps) == 1 or comps[0] != self.section
+        last = self.last_num
+        return bool(last) and len(comps) == 1 and len(last) >= 2 and comps[0] <= last[0]
 
     def _flush(self) -> None:
         if not self.pending:
@@ -474,19 +512,35 @@ class Outline:
         self.anchor = level
         self.d0 = None
         self.rel = []
+        self.last_num = None
+        self.anchor_num = False
         self._add(num, level, text, src, heading=True)
 
-    def numbered(self, num: str, depth: int, text: str, src: dict, qty=None, unit: str = "") -> None:
+    def numbered(self, num: str, depth: int, text: str, src: dict, qty=None, unit: str = "",
+                 raw: str | None = None) -> bool:
+        """Нумерованный пункт; False — номер локальный и абзац дописан в текст предыдущего пункта."""
         self._flush()
+        comps = num_tuple(num)
+        if comps and self.items and self._is_local(comps):
+            self._append(raw or f"{num} {text}")
+            return False
         if self.d0 is None:
             self.d0 = depth
         level = self.base + 1 + max(0, depth - self.d0)
         self.anchor = level
         self.rel = []
+        if comps:
+            self.last_num = comps
+        self.anchor_num = True
         self._add(num, level, text, src, qty, unit)
+        return True
 
-    def relative(self, mtype: str, num: str, text: str, src: dict, qty=None, unit: str = "") -> None:
+    def relative(self, mtype: str, num: str, text: str, src: dict, qty=None, unit: str = "",
+                 raw: str | None = None) -> None:
         self._flush()
+        if mtype.startswith("bullet") and self.anchor_num and self.items:
+            self._append(raw or f"• {text}")
+            return
         if mtype in self.rel:
             self.rel = self.rel[: self.rel.index(mtype) + 1]
         else:
@@ -502,16 +556,18 @@ class Outline:
         if last["_heading"]:
             self.pending.append((text, src))
         else:
-            last["_paras"].append(text)
+            self._append(text)
 
     def table_begin(self) -> None:
         self._flush()
-        self._saved = (self.base, self.anchor, self.d0, list(self.rel))
+        self._saved = (self.base, self.anchor, self.d0, list(self.rel), self.last_num, self.anchor_num)
         self.in_table = True
         self.base = self.head
         self.anchor = self.head
         self.d0 = None
         self.rel = []
+        self.last_num = None
+        self.anchor_num = False
 
     def table_row(self, text: str, src: dict, qty=None, unit: str = "") -> None:
         """Строка таблицы работ без номера — подпункт текущего раздела таблицы."""
@@ -522,7 +578,7 @@ class Outline:
         self._flush()
         self.in_table = False
         if self._saved:
-            self.base, self.anchor, self.d0, self.rel = self._saved
+            self.base, self.anchor, self.d0, self.rel, self.last_num, self.anchor_num = self._saved
         self._saved = None
 
     # -- итог ----------------------------------------------------------------
@@ -545,8 +601,9 @@ class Outline:
             qty, unit = it["qty"], it["unit"]
             if qty is None and not it["_heading"]:
                 qty, unit2 = extract_qty(paras[0])
-                if qty is None and len(paras) > 1:
-                    qty, unit2 = extract_qty(text)
+                # перенос строки первого абзаца (без маркера) — тоже часть формулировки пункта
+                if qty is None and len(paras) > 1 and classify_marker(paras[1]) is None:
+                    qty, unit2 = extract_qty(paras[1])
                 unit = unit or unit2
             out.append({
                 "num": it["num"],
@@ -644,6 +701,56 @@ def _cell(row: list[str], idx: int | None) -> str:
     return clean_text(row[idx])
 
 
+def _para_is_numbered(p: Para) -> bool:
+    if p.auto is not None:
+        return not p.auto[2] and bool(p.auto[0])
+    mk = classify_marker(clean_text(p.text))
+    return mk is not None and mk.kind == "dotted"
+
+
+def _expand_row(outline: Outline, tb: TableBlock, r_i: int, tmap: TableMap, src: dict) -> bool:
+    """Строка-раздел с нумерованными абзацами в ячейке описания («№ | Раздел | Требования»).
+
+    Раздел (номер из колонки «№», название из колонки «Наименование») становится пунктом,
+    а каждый нумерованный абзац ячейки — отдельным пунктом со своим номером (набранным
+    вручную или автонумерацией Word); остальные абзацы дописываются в текст пунктов.
+    Возвращает False, если строку раскрывать не нужно.
+    """
+    cells = tb.cell_paras[r_i]
+    row = tb.rows[r_i]
+    cand = [c for c in [tmap.name] + list(tmap.notes) if c is not None and c < len(cells)]
+    expand = []
+    for c in cand:
+        n = sum(1 for p in cells[c] if _para_is_numbered(p))
+        # в колонке описания достаточно одного номера; в колонке названия — от двух
+        if n >= (2 if c == tmap.name else 1):
+            expand.append(c)
+    if not expand:
+        return False
+    num = normalize_num(_cell(row, tmap.num))
+    head = [_cell(row, c) for c in [tmap.name] + list(tmap.notes)
+            if c is not None and c not in expand and _cell(row, c)]
+    head_text = "\n".join(head)
+    qty, unit_in_qty = parse_qty(_cell(row, tmap.qty)) if _cell(row, tmap.qty) else (None, "")
+    unit = norm_unit(_cell(row, tmap.unit)) if _cell(row, tmap.unit) else unit_in_qty
+    comps = num_tuple(num)
+    section = None
+    if comps:
+        outline.numbered(num, len(comps), head_text or f"Раздел {num}", src, qty, unit)
+        section = comps[0] if len(comps) == 1 else None
+    elif head_text:
+        outline.heading(head_text, 1, src)
+    prev = outline.section
+    outline.section = section
+    try:
+        for c in expand:
+            for p in cells[c]:
+                feed_para(outline, p, in_cell=True)
+    finally:
+        outline.section = prev
+    return True
+
+
 def process_table(outline: Outline, tb: TableBlock) -> bool:
     """Добавляет пункты из таблицы работ. False — таблица не похожа на перечень работ."""
     tmap = find_table_map(tb.rows)
@@ -668,6 +775,9 @@ def process_table(outline: Outline, tb: TableBlock) -> bool:
         qty_raw = _cell(row, tmap.qty)
         unit_raw = _cell(row, tmap.unit)
         merged = tb.merged[r_i] if r_i < len(tb.merged) else False
+        if tb.cell_paras is not None and r_i < len(tb.cell_paras) and not merged \
+                and _expand_row(outline, tb, r_i, tmap, src):
+            continue
         distinct = list(dict.fromkeys(nonempty))
         # Строка-раздел: одна объединённая ячейка или единственный текст без номера и количества.
         if merged or (len(distinct) == 1 and not num_raw and not qty_raw):
@@ -750,6 +860,86 @@ def _is_heading_like(p: Para) -> bool:
     return p.bold or looks_like_caps_heading(t)
 
 
+_DOTTED_NUM = re.compile(r"\d{1,3}(?:\.\d{1,3}){0,5}\.?")
+
+
+def feed_para(outline: Outline, el: Para, rank_map: dict | None = None, in_cell: bool = False) -> None:
+    """Добавляет абзац в иерархию: номер, маркер, заголовок или продолжение текста.
+
+    in_cell — абзац из ячейки таблицы-раздела: заголовки и «стоп-слова» там не ищем,
+    всё ненумерованное дописывается к предыдущему пункту.
+    """
+    text = clean_text(el.text)
+    if not text:
+        return
+    flat = one_line(text)
+    started = bool(outline.items)
+
+    if el.auto is not None:
+        num, ilvl, bullet = el.auto
+        if not in_cell and is_stop_heading(flat) and started:
+            outline.stopped = True
+            return
+        if bullet:
+            outline.relative(f"bullet{ilvl}", "", text, el.src, raw=f"• {text}")
+            return
+        if num and _DOTTED_NUM.fullmatch(num.strip()):
+            outline.numbered(normalize_num(num), ilvl + 1 + el.sub_list, text, el.src, raw=f"{num} {text}")
+            return
+        mk = classify_marker(f"{num} {flat}") if num else None
+        if mk is None:
+            outline.relative(f"auto{ilvl}", normalize_num(num) if num else "", text, el.src)
+        elif mk.kind == "section":
+            if in_cell:
+                outline.plain(f"{num} {text}", el.src)
+            else:
+                outline.heading(text, 1, el.src, num=mk.num)
+        else:
+            outline.relative(f"{mk.kind}{ilvl}", mk.num, text, el.src)
+        return
+
+    mk = classify_marker(text)
+    if mk is not None and mk.kind != "bullet" and mk.rest:
+        if not in_cell and is_stop_heading(mk.rest) and started:
+            outline.stopped = True
+            return
+        if mk.kind == "dotted":
+            if el.indent and mk.depth == 1:
+                outline.relative(f"num-i{el.indent}", mk.num, mk.rest, el.src)
+            else:
+                outline.numbered(mk.num, mk.depth + el.sub_list, mk.rest, el.src, raw=text)
+        elif mk.kind == "section":
+            if in_cell:
+                outline.plain(text, el.src)
+            else:
+                outline.heading(mk.rest, 1, el.src, num=mk.num)
+        else:
+            outline.relative(f"{mk.kind}-i{el.indent}", mk.num, mk.rest, el.src)
+        return
+    if mk is not None and mk.kind == "bullet" and mk.rest:
+        if is_signature_like(mk.rest):
+            return
+        outline.relative(f"bullet-i{el.indent}", "", mk.rest, el.src, raw=text)
+        return
+
+    if not in_cell and _is_heading_like(el):
+        if is_stop_heading(flat) or (started and _STOP_APPENDIX_RE.match(flat)):
+            if started:
+                outline.stopped = True
+            return
+        if is_signature_like(flat) or (not started and (is_header_like(flat) or is_title_line(flat))):
+            outline.loose.append((text, el.src))
+            return
+        rank = (rank_map or {}).get(el.heading, 1) if el.heading else 1
+        outline.heading(text, rank, el.src)
+        return
+
+    if not in_cell and started and _STOP_APPENDIX_RE.match(flat):
+        outline.stopped = True
+        return
+    outline.plain(text, el.src)
+
+
 def build_items(stream: list, fallback_title: str = "") -> tuple[str, list[dict]]:
     """Превращает поток Para/TableBlock в название документа и список пунктов."""
     title, title_end = _find_title(stream)
@@ -765,75 +955,8 @@ def build_items(stream: list, fallback_title: str = "") -> tuple[str, list[dict]
             break
         if isinstance(el, TableBlock):
             process_table(outline, el)
-            continue
-        text = clean_text(el.text)
-        if not text:
-            continue
-        flat = one_line(text)
-        started = bool(outline.items)
-
-        if el.auto is not None:
-            num, ilvl, bullet = el.auto
-            if is_stop_heading(flat) and started:
-                outline.stopped = True
-                continue
-            if bullet:
-                outline.relative(f"bullet{ilvl}", "", text, el.src)
-                continue
-            if num and re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){0,5}\.?", num.strip()):
-                outline.numbered(normalize_num(num), ilvl + 1 + el.sub_list, text, el.src)
-                continue
-            mk = classify_marker(f"{num} {flat}") if num else None
-            if mk is None:
-                if num:
-                    outline.relative(f"auto{ilvl}", normalize_num(num), text, el.src)
-                else:
-                    outline.relative(f"auto{ilvl}", "", text, el.src)
-            elif mk.kind == "dotted":
-                outline.numbered(normalize_num(num), ilvl + 1 + el.sub_list, text, el.src)
-            elif mk.kind == "section":
-                outline.heading(text, 1, el.src, num=mk.num)
-            else:
-                outline.relative(f"{mk.kind}{ilvl}", mk.num, text, el.src)
-            continue
-
-        mk = classify_marker(flat)
-        if mk is not None and mk.kind != "bullet" and mk.rest:
-            if is_stop_heading(mk.rest) and started:
-                outline.stopped = True
-                continue
-            if mk.kind == "dotted":
-                if el.indent and mk.depth == 1:
-                    outline.relative(f"num-i{el.indent}", mk.num, mk.rest, el.src)
-                else:
-                    outline.numbered(mk.num, mk.depth + el.sub_list, mk.rest, el.src)
-            elif mk.kind == "section":
-                outline.heading(mk.rest, 1, el.src, num=mk.num)
-            else:
-                outline.relative(f"{mk.kind}-i{el.indent}", mk.num, mk.rest, el.src)
-            continue
-        if mk is not None and mk.kind == "bullet" and mk.rest:
-            if is_signature_like(mk.rest):
-                continue
-            outline.relative(f"bullet-i{el.indent}", "", mk.rest, el.src)
-            continue
-
-        if _is_heading_like(el):
-            if is_stop_heading(flat) or (started and _STOP_APPENDIX_RE.match(flat)):
-                if started:
-                    outline.stopped = True
-                continue
-            if is_signature_like(flat) or (not started and (is_header_like(flat) or is_title_line(flat))):
-                outline.loose.append((text, el.src))
-                continue
-            rank = rank_map.get(el.heading, 1) if el.heading else 1
-            outline.heading(text, rank, el.src)
-            continue
-
-        if started and _STOP_APPENDIX_RE.match(flat):
-            outline.stopped = True
-            continue
-        outline.plain(text, el.src)
+        else:
+            feed_para(outline, el, rank_map)
 
     items = outline.finish()
     return (title or fallback_title), items

@@ -11,12 +11,13 @@ from docx.enum.section import WD_ORIENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
-from .common import (STATUS_COLORS, STATUS_LABELS, STATUS_TINTS, ImageCache, PhotoIndex, fmt_date, item_label,
-                     norm_options, only_status_text, period_text, photo_caption, qty_text, same_text, section_info,
-                     select_items, status_key, summary)
+from .common import (STATUS_COLORS, STATUS_LABELS, STATUS_TINTS, ImageCache, PhotoIndex, file_label, fmt_date,
+                     is_web_link, item_extra, item_label, norm_options, only_status_text, period_text,
+                     photo_caption, qty_text, same_text, section_info, select_items, status_key, summary)
 
 FONT = "Arial"           # есть на Windows и macOS, кириллица поддерживается
 PAGE_W, MARGIN = 21.0, 1.8
@@ -211,6 +212,8 @@ def _title_page(doc, project: dict, s: dict, opts: dict) -> None:
         st_rows.append(("Разделов ТЗ (заголовков)", str(s["sections"]), None))
     st_rows.append(("Готовность", f"{round(s['progress'] * 100)} %", None))
     st_rows.append(("Фото всего", str(s["photos"]), None))
+    if s.get("files"):
+        st_rows.append(("Файлов (документы, видео)", str(s["files"]), None))
     st_rows.append(("  в пунктах ТЗ / без пункта", f"{s['photos_in_items']} / {s['photos_unsorted']}", None))
     t = doc.add_table(rows=len(st_rows), cols=2)
     t.style = doc.styles["Table Grid"]
@@ -267,7 +270,9 @@ def _exec_table(doc, items: list[dict], idx: PhotoIndex, sections: dict) -> None
         _shade(cells[3], STATUS_TINTS[key])
         _run(cells[4].paragraphs[0], fmt_date(it.get("done_at")), size=9)
         n = len(idx.for_item(it))
-        _run(cells[5].paragraphs[0], str(n) if n else "—", size=9)
+        nf = len(idx.files_for(it))
+        shown = (f"{n} + {nf} ф." if nf else str(n)) if (n or nf) else "—"
+        _run(cells[5].paragraphs[0], shown, size=9)
         cells[5].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
     _widths(t, cols)
 
@@ -306,22 +311,88 @@ def _photo_grid(doc, photos: list[dict], cache: ImageCache, per_row: int, counte
     return len(prepared)
 
 
+def _para_box(p, fill: str, edge: str) -> None:
+    """Подсветка абзаца: заливка и полоса слева («Что приложить»)."""
+    ppr = p._p.get_or_add_pPr()
+    bdr = OxmlElement("w:pBdr")
+    left = OxmlElement("w:left")
+    for k, v in (("w:val", "single"), ("w:sz", "18"), ("w:space", "6"), ("w:color", edge)):
+        left.set(qn(k), v)
+    bdr.append(left)
+    ppr.append(bdr)
+    shd = OxmlElement("w:shd")
+    for k, v in (("w:val", "clear"), ("w:color", "auto"), ("w:fill", fill)):
+        shd.set(qn(k), v)
+    ppr.append(shd)
+    p.paragraph_format.left_indent = Cm(0.2)
+
+
+def _hyperlink(p, url: str, text: str, size: float = 9) -> None:
+    """Кликабельная ссылка в абзаце Word (только http, https, mailto)."""
+    if not is_web_link(url):
+        _run(p, text, size=size, color="3C4043")
+        return
+    r_id = p.part.relate_to(url, RT.HYPERLINK, is_external=True)
+    link = OxmlElement("w:hyperlink")
+    link.set(qn("r:id"), r_id)
+    run = OxmlElement("w:r")
+    rpr = OxmlElement("w:rPr")
+    fonts = OxmlElement("w:rFonts")
+    for attr in ("w:ascii", "w:hAnsi", "w:cs", "w:eastAsia"):
+        fonts.set(qn(attr), FONT)
+    color = OxmlElement("w:color")
+    color.set(qn("w:val"), "1A73E8")
+    underline = OxmlElement("w:u")
+    underline.set(qn("w:val"), "single")
+    sz = OxmlElement("w:sz")
+    sz.set(qn("w:val"), str(int(size * 2)))
+    for el in (fonts, color, sz, underline):
+        rpr.append(el)
+    run.append(rpr)
+    t = OxmlElement("w:t")
+    t.set(qn("xml:space"), "preserve")
+    t.text = text
+    run.append(t)
+    link.append(run)
+    p._p.append(link)
+
+
+def _label_para(doc, label: str, value: str, keep_next: bool, italic: bool = False):
+    p = _para(doc, "", space_after=3, keep_next=keep_next)
+    _run(p, f"{label}: ", size=9, bold=True, color="3C4043")
+    _run(p, value, size=9, italic=italic, color="3C4043")
+    return p
+
+
 def _item_block(doc, items: list[dict], i: int, idx: PhotoIndex, cache: ImageCache, opts: dict,
                 counter: list[int], sections: dict) -> None:
+    """Карточка пункта: Раздел, описание, «Что приложить», комментарий анализа, статус,
+    комментарий исполнителя, ссылки, файлы, фото. Необязательные поля — только если заполнены."""
     it = items[i]
     key = status_key(it)
     photos = idx.for_item(it)
+    files = idx.files_for(it)
+    ex = item_extra(it)
     level = int(it.get("level") or 1)
     section_only = it.get("id") in sections
     _heading(doc, item_label(it) or "Пункт", 2 if level <= 1 else 3)
     if section_only:
         return
+    if ex["section"]:
+        _label_para(doc, "Раздел", ex["section"], keep_next=True)
     text = (it.get("text") or "").strip()
     if text and not same_text(text, it.get("title") or ""):
         _para(doc, text, size=9, color="3C4043", space_after=3, keep_next=True)
+    if ex["required"]:
+        p = _para(doc, "", space_after=4, keep_next=True)
+        _para_box(p, "FEF7E0", "F9AB00")
+        _run(p, "Что приложить: ", size=9.5, bold=True, color="7A4A00")
+        _run(p, ex["required"], size=9.5, color="202124")
+    if ex["note"]:
+        _label_para(doc, "Комментарий анализа", ex["note"], keep_next=True, italic=True)
     meta = doc.add_paragraph()
     meta.paragraph_format.space_after = Pt(3)
-    meta.paragraph_format.keep_with_next = bool(photos)
+    meta.paragraph_format.keep_with_next = bool(photos or files or ex["links"])
     _status_marker(meta, key)
     if it.get("done_at"):
         _run(meta, f"   ·   {fmt_date(it.get('done_at'))}", size=9, color="5F6368")
@@ -329,12 +400,25 @@ def _item_block(doc, items: list[dict], i: int, idx: PhotoIndex, cache: ImageCac
     if q:
         _run(meta, f"   ·   объём: {q}", size=9, color="5F6368")
     _run(meta, f"   ·   фото: {len(photos)}", size=9, color="5F6368")
+    if files:
+        _run(meta, f"   ·   файлов: {len(files)}", size=9, color="5F6368")
     if (it.get("comment") or "").strip():
-        p = _para(doc, "", space_after=3, keep_next=bool(photos))
-        _run(p, "Комментарий: ", size=9, bold=True, color="3C4043")
-        _run(p, it["comment"].strip(), size=9, italic=True, color="3C4043")
+        _label_para(doc, "Комментарий", it["comment"].strip(), keep_next=bool(photos), italic=True)
+    if ex["links"]:
+        p = _para(doc, "", space_after=3, keep_next=True)
+        _run(p, "Ссылки:", size=9, bold=True, color="3C4043")
+        for url in ex["links"]:
+            p.add_run().add_break()
+            _hyperlink(p, url, url)
+    if files:
+        p = _para(doc, "", space_after=4, keep_next=bool(photos))
+        _run(p, "Файлы:", size=9, bold=True, color="3C4043")
+        for f in files:
+            p.add_run().add_break()
+            _run(p, "• ", size=9, color="5F6368")
+            _run(p, file_label(f), size=9, color="3C4043")
     inserted = _photo_grid(doc, photos, cache, opts["photos_per_row"], counter) if photos else 0
-    if not inserted and key not in ("na",):
+    if not inserted and not files and key not in ("na",):
         _para(doc, "Фото не приложены." if not photos else "Файлы фото не найдены.", size=8.5, italic=True,
               color="9AA0A6", space_after=4)
 
@@ -360,11 +444,19 @@ def export_docx(project: dict, project_dir: str, out_path: str, options: dict | 
         _item_block(doc, items, i, idx, cache, opts, counter, sections)
     if opts["include_unsorted"]:
         loose = idx.unsorted()
-        if loose:
+        loose_files = idx.unsorted_files()
+        if loose or loose_files:
             doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
             _heading(doc, "Фото без пункта ТЗ", 1)
-            _para(doc, f"Фото, которые не отнесены ни к одному пункту: {len(loose)}.", size=9, color="5F6368")
-            _photo_grid(doc, loose, cache, opts["photos_per_row"], counter)
+            if loose:
+                _para(doc, f"Фото, которые не отнесены ни к одному пункту: {len(loose)}.", size=9, color="5F6368")
+                _photo_grid(doc, loose, cache, opts["photos_per_row"], counter)
+            if loose_files:
+                p = _para(doc, "", space_after=4)
+                _run(p, "Файлы без пункта ТЗ:", size=9, bold=True, color="3C4043")
+                for f in loose_files:
+                    p.add_run().add_break()
+                    _run(p, "• " + file_label(f), size=9, color="3C4043")
 
     cp = doc.core_properties
     cp.title = f"Фотоотчёт — {project.get('name') or ''}".strip(" —")

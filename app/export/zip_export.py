@@ -7,7 +7,9 @@
 
 Имя папки — folder_name(item, index): порядковый номер пункта в ТЗ (для сортировки),
 номер пункта и его краткое название; безопасные символы, не длиннее 80 знаков.
-В архив попадают только пункты, к которым есть фото.
+В архив попадают только пункты, к которым есть фото или файлы. Вложения (project["files"]:
+pdf, docx, xlsx, видео) лежат в папке пункта рядом с фото под исходными именами; фото и файлы
+без пункта — в «Неразобранное/».
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from __future__ import annotations
 import os
 import zipfile
 
-from .common import PhotoIndex, ensure_ext_jpg, photo_path, safe_name
+from .common import PhotoIndex, ensure_ext_jpg, file_path, photo_path, safe_name
 
 UNSORTED_FOLDER = "Неразобранное"
 FOLDER_LIMIT = 80
@@ -84,7 +86,9 @@ def export_zip(project: dict, project_dir: str, out_path: str, which: str = "wor
             photos = idx.for_item(item)
             files = [(p, photo_path(project_dir, p, which)) for p in photos]
             files = [(p, f) for p, f in files if f]
-            if not files:
+            attachments = [(f, file_path(project_dir, f)) for f in idx.files_for(item)]
+            attachments = [(f, path) for f, path in attachments if path]
+            if not files and not attachments:
                 continue
             folder = _unique(names.get(item.get("id")) or folder_name(item, i + 1), used_dirs)
             num = safe_name(item.get("num") or "", 20, fallback="") or f"{i + 1:02d}"
@@ -93,12 +97,30 @@ def export_zip(project: dict, project_dir: str, out_path: str, which: str = "wor
             for seq, (p, path) in enumerate(files, start=1):
                 fname = _unique(_file_name(num, seq, width, p, path, which), used)
                 zf.write(path, f"{folder}/{fname}")
+            _write_attachments(zf, folder, attachments, used)
         loose = [(p, photo_path(project_dir, p, which)) for p in idx.unsorted()]
         loose = [(p, f) for p, f in loose if f]
+        loose_files = [(f, file_path(project_dir, f)) for f in idx.unsorted_files()]
+        loose_files = [(f, path) for f, path in loose_files if path]
+        used = set()
         if loose:
-            used = set()
             width = max(3, len(str(len(loose))))
             for seq, (p, path) in enumerate(loose, start=1):
                 fname = _unique(_file_name("", seq, width, p, path, which), used)
                 zf.write(path, f"{UNSORTED_FOLDER}/{fname}")
+        _write_attachments(zf, UNSORTED_FOLDER, loose_files, used)
     return out_path
+
+
+_PACKED = {".txt", ".csv", ".json", ".xml", ".html", ".htm", ".md", ".rtf", ".doc", ".xls", ".ppt", ".svg"}
+
+
+def _write_attachments(zf: zipfile.ZipFile, folder: str, attachments: list, used: set) -> None:
+    """Вложения (pdf, docx, видео…) — в папку пункта с исходными именами."""
+    for f, path in attachments:
+        ext = os.path.splitext(path)[1].lower()
+        orig = f.get("name") or os.path.basename(path)
+        stem = safe_name(os.path.splitext(orig)[0], 100, fallback=f.get("id") or "файл")
+        fname = _unique(stem + (os.path.splitext(orig)[1].lower() or ext), used)
+        zf.write(path, f"{folder}/{fname}",
+                 compress_type=zipfile.ZIP_DEFLATED if ext in _PACKED else zipfile.ZIP_STORED)
