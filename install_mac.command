@@ -30,8 +30,8 @@ echo "[1/3] Python: $PY ($("$PY" --version))"
 
 echo "[2/3] Устанавливаю зависимости (несколько минут, нужен интернет)…"
 "$PY" -m venv .venv
-./.venv/bin/python -m pip install -q --upgrade pip
-./.venv/bin/python -m pip install -q -r requirements.txt
+./.venv/bin/python -m pip install -q --timeout 60 --retries 10 --upgrade pip
+./.venv/bin/python -m pip install -q --timeout 60 --retries 10 -r requirements.txt
 
 echo "[3/3] Создаю приложение «ФотоОтчёт» в ~/Applications"
 APP="$HOME/Applications/ФотоОтчёт.app"
