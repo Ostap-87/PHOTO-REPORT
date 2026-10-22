@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+storage/*
+!storage/.gitkeep
+.pytest_cache/
+*.tmp
+.DS_Store
+*.tmp.*
+tests/_out/

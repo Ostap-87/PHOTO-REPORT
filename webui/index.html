@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ФотоОтчёт</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #f3f4f1; --panel: #ffffff; --panel-2: #f8f9f6; --ink: #1b2420; --muted: #66706b; --faint: #9aa29d;
+  --line: #dfe3dc; --line-2: #eceee9; --accent: #1f5f4a; --accent-ink: #ffffff; --accent-soft: #e2eee8;
+  --todo: #8a918d; --done: #1d7f4f; --done-soft: #e0f2e8; --provided: #2a5fc4; --provided-soft: #e3ebfa;
+  --executed: #7340b8; --executed-soft: #efe6fa; --na: #a3aaa6; --na-soft: #eef0ee;
+  --warn: #a8650f; --warn-soft: #fbefdc; --danger: #b8322a; --danger-soft: #fae4e2; --hl: #fff2b8;
+  --shadow: 0 1px 2px rgba(20,30,25,.06), 0 4px 14px rgba(20,30,25,.06);
+  --radius: 10px; --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111513; --panel: #191f1c; --panel-2: #151a18; --ink: #e5ebe7; --muted: #9aa5a0; --faint: #6d7873;
+  --line: #2a332f; --line-2: #222a26; --accent: #5bc497; --accent-ink: #0d1a14; --accent-soft: #1d3329;
+  --todo: #8e9893; --done: #4cc98a; --done-soft: #17301f; --provided: #79a4f2; --provided-soft: #182641;
+  --executed: #b590ec; --executed-soft: #2a1f3b; --na: #6d7873; --na-soft: #1d2320;
+  --warn: #e3a54d; --warn-soft: #34270f; --danger: #f07a70; --danger-soft: #3a1b18; --hl: #4a4113;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.25); color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #111513; --panel: #191f1c; --panel-2: #151a18; --ink: #e5ebe7; --muted: #9aa5a0; --faint: #6d7873;
+  --line: #2a332f; --line-2: #222a26; --accent: #5bc497; --accent-ink: #0d1a14; --accent-soft: #1d3329;
+  --todo: #8e9893; --done: #4cc98a; --done-soft: #17301f; --provided: #79a4f2; --provided-soft: #182641;
+  --executed: #b590ec; --executed-soft: #2a1f3b; --na: #6d7873; --na-soft: #1d2320;
+  --warn: #e3a54d; --warn-soft: #34270f; --danger: #f07a70; --danger-soft: #3a1b18; --hl: #4a4113;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.25); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+a { color: var(--accent); }
+
+/* ---------- шапка */
+.top { height: 54px; display: flex; align-items: center; gap: 14px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 15px; letter-spacing: -.01em; white-space: nowrap; cursor: pointer; }
+.brand img { width: 26px; height: 26px; }
+.crumb { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); }
+.crumb b { color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
+.tabs { display: flex; gap: 2px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 3px; }
+.tabs button { border: 0; background: none; padding: 5px 14px; border-radius: 6px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+.tabs button.on { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+.tabs .cnt { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 5px; border-radius: 9px; background: var(--warn-soft); color: var(--warn); font-size: 11px; font-weight: 700; text-align: center; }
+.spacer { flex: 1; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); font-size: 12px; white-space: nowrap; }
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.chip.ok .dot { background: var(--done); }
+.chip.busy .dot { background: var(--warn); animation: pulse 1s infinite alternate; }
+.chip.err { color: var(--danger); border-color: var(--danger); }
+@keyframes pulse { to { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .chip.busy .dot { animation: none; } }
+
+/* ---------- кнопки и поля */
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 500; white-space: nowrap; }
+.btn:hover { border-color: var(--faint); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.07); }
+.btn.ghost { border-color: transparent; background: none; color: var(--muted); }
+.btn.ghost:hover { color: var(--ink); background: var(--panel-2); }
+.btn.danger { color: var(--danger); }
+.btn.sm { height: 26px; padding: 0 9px; font-size: 12px; border-radius: 6px; }
+.btn:disabled { opacity: .5; cursor: default; }
+input[type=text], input:not([type]), textarea, select { border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 6px 9px; outline: none; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+textarea { resize: vertical; }
+label.chk { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; white-space: nowrap; }
+label.chk input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+main { height: calc(100% - 54px); }
+.view { height: 100%; }
+
+/* ---------- проекты */
+#viewProjects { overflow: auto; }
+.pwrapper { max-width: 1120px; margin: 0 auto; padding: 28px 24px 60px; }
+.phead { display: flex; align-items: flex-end; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.phead h1 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
+.phead p { margin: 4px 0 0; color: var(--muted); }
+.newprj { display: flex; gap: 8px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 22px; box-shadow: var(--shadow); align-items: center; }
+.newprj input { flex: 1 1 220px; height: 34px; }
+.newprj .lbl { font-weight: 600; margin-right: 6px; }
+.pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.pcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; cursor: pointer; display: flex; flex-direction: column; gap: 10px; box-shadow: var(--shadow); position: relative; }
+.pcard:hover { border-color: var(--accent); }
+.pcard h3 { margin: 0; font-size: 16px; padding-right: 30px; }
+.pcard .cust { color: var(--muted); font-size: 13px; margin-top: -6px; }
+.pcard .tzt { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcard .del { position: absolute; top: 10px; right: 10px; }
+.bar { height: 8px; border-radius: 4px; background: var(--line-2); overflow: hidden; display: flex; }
+.bar i { display: block; height: 100%; }
+.bar .b-done { background: var(--done); } .bar .b-provided { background: var(--provided); } .bar .b-executed { background: var(--executed); } .bar .b-na { background: var(--na); }
+.stats { display: flex; gap: 14px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.stats b { color: var(--ink); font-weight: 600; }
+.stats .warn b { color: var(--warn); }
+.empty { text-align: center; padding: 60px 20px; color: var(--muted); border: 2px dashed var(--line); border-radius: 14px; }
+.empty h2 { color: var(--ink); margin: 0 0 6px; font-size: 18px; }
+
+/* ---------- ТЗ */
+#viewTz { display: grid; grid-template-columns: minmax(320px, 42%) 1fr; }
+#viewTz.noorig { grid-template-columns: 1fr; }
+#viewTz.noorig .pane.left { display: none; }
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.pane + .pane { border-left: 1px solid var(--line); }
+.panehead { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); min-height: 52px; flex-wrap: wrap; }
+.panehead h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.panehead .fname { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.panebody { flex: 1; overflow: auto; min-height: 0; }
+#orig { background: var(--panel-2); padding: 18px; }
+.orig-doc { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 28px 30px; max-width: 820px; margin: 0 auto; box-shadow: var(--shadow); font-size: 13px; }
+.orig-doc table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 12px; }
+.orig-doc td, .orig-doc th { border: 1px solid var(--line); padding: 4px 6px; vertical-align: top; }
+.orig-doc h1, .orig-doc h2, .orig-doc h3 { font-size: 15px; margin: 14px 0 6px; }
+.orig-doc p { margin: 4px 0; }
+.orig-doc img { max-width: 100%; }
+.orig-doc [data-src] { border-radius: 3px; transition: background .3s; }
+.orig-doc .hl, .page-wrap.hl { background: var(--hl); outline: 2px solid var(--warn); outline-offset: 2px; }
+.page-wrap { margin: 0 auto 14px; max-width: 860px; border-radius: 4px; }
+.page-wrap img { width: 100%; display: block; border: 1px solid var(--line); border-radius: 4px; background: #fff; box-shadow: var(--shadow); }
+.page-wrap .pn { font-size: 11px; color: var(--faint); text-align: center; padding: 3px; }
+
+.exec-head { gap: 14px; }
+.progress-line { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 220px; }
+.progress-line .bar { flex: 1; max-width: 260px; }
+.progress-line .txt { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.filters { display: flex; gap: 4px; flex-wrap: wrap; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.filters button { border: 1px solid var(--line); background: var(--panel); border-radius: 14px; padding: 2px 10px; font-size: 12px; color: var(--muted); }
+.filters button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+#items { padding: 18px 22px 80px; display: flex; flex-direction: column; gap: 12px; }
+.doc-title { max-width: 900px; margin: 0 auto 4px; width: 100%; }
+.doc-title .kicker { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--accent); font-weight: 700; }
+.doc-title h1 { margin: 4px 0 2px; font-size: 21px; letter-spacing: -.01em; }
+.doc-title .sub { color: var(--muted); font-size: 13px; }
+
+.item { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--todo); border-radius: var(--radius); padding: 12px 14px 12px 14px; max-width: 900px; width: 100%; margin: 0 auto; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 9px; }
+.item.lvl-2 { margin-left: max(0px, calc((100% - 900px) / 2 + 26px)); width: calc(100% - 26px); max-width: 874px; }
+.item.lvl-3, .item.lvl-4 { margin-left: max(0px, calc((100% - 900px) / 2 + 52px)); width: calc(100% - 52px); max-width: 848px; }
+.item.section { background: var(--panel-2); }
+.item.st-done { border-left-color: var(--done); } .item.st-provided { border-left-color: var(--provided); } .item.st-executed { border-left-color: var(--executed); }
+.item.st-na { border-left-color: var(--na); opacity: .72; }
+.item.st-na .ititle { text-decoration: line-through; text-decoration-color: var(--faint); }
+.item.flash { box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
+.ihead { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.num { font-family: var(--mono); font-size: 12px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; margin-top: 1px; white-space: nowrap; }
+.ititle { margin: 0; font-size: 14.5px; font-weight: 600; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.stamp { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; padding: 3px 8px; border: 2px solid currentColor; border-radius: 5px; transform: rotate(-2deg); white-space: nowrap; }
+.st-done .stamp { color: var(--done); } .st-provided .stamp { color: var(--provided); } .st-executed .stamp { color: var(--executed); } .st-na .stamp { color: var(--na); }
+.itext { color: var(--muted); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.itext.open { -webkit-line-clamp: unset; display: block; }
+.qty { font-size: 12px; color: var(--muted); }
+.qty b { color: var(--ink); }
+.seg { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; width: fit-content; max-width: 100%; }
+.seg button { border: 0; border-right: 1px solid var(--line); background: var(--panel); padding: 4px 11px; font-size: 12.5px; color: var(--muted); }
+.seg button:last-child { border-right: 0; }
+.seg button:hover { background: var(--panel-2); color: var(--ink); }
+.seg button.on.s-todo { background: var(--line-2); color: var(--ink); font-weight: 600; }
+.seg button.on.s-done { background: var(--done-soft); color: var(--done); font-weight: 600; }
+.seg button.on.s-provided { background: var(--provided-soft); color: var(--provided); font-weight: 600; }
+.seg button.on.s-executed { background: var(--executed-soft); color: var(--executed); font-weight: 600; }
+.seg button.on.s-na { background: var(--na-soft); color: var(--muted); font-weight: 600; }
+.row2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 8px; }
+.row2 textarea, .row2 input { width: 100%; font-size: 13px; min-height: 32px; }
+.row2 textarea { height: 32px; }
+.saved { font-size: 11px; color: var(--done); margin-left: 6px; }
+.strip { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; border-radius: 8px; background: var(--panel-2); border: 1px dashed transparent; min-height: 92px; align-items: flex-start; }
+.strip.over, .folder.over { border-color: var(--accent); background: var(--accent-soft); }
+.th { position: relative; width: 104px; height: 78px; border-radius: 6px; overflow: hidden; background: var(--line-2); cursor: pointer; flex: none; border: 2px solid transparent; }
+.th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.th.auto { border-color: var(--warn); border-style: dashed; }
+.th .b { position: absolute; left: 3px; bottom: 3px; font-size: 10px; font-weight: 700; background: rgba(0,0,0,.6); color: #fff; padding: 1px 5px; border-radius: 4px; }
+.th .ok { position: absolute; right: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--warn); color: #fff; font-size: 12px; line-height: 22px; padding: 0; }
+.th .ok:hover { background: var(--done); }
+.slot { width: 104px; height: 78px; border-radius: 6px; border: 1.5px dashed var(--line); display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11px; color: var(--faint); flex: none; padding: 4px; line-height: 1.25; }
+label.slot { cursor: pointer; color: var(--accent); border-color: var(--accent); background: var(--panel); font-weight: 600; }
+label.slot:hover { background: var(--accent-soft); }
+.editbox { display: grid; grid-template-columns: 90px 1fr; gap: 6px 10px; align-items: center; padding: 10px; background: var(--panel-2); border-radius: 8px; font-size: 13px; }
+.editbox label { color: var(--muted); font-size: 12px; }
+.editbox .acts { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; }
+.tz-empty { max-width: 680px; margin: 60px auto; text-align: center; }
+.drop { border: 2px dashed var(--line); border-radius: 16px; padding: 50px 30px; background: var(--panel); }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop h2 { margin: 0 0 6px; font-size: 19px; }
+.drop p { color: var(--muted); margin: 0 0 18px; }
+.formats { font-size: 12px; color: var(--faint); margin-top: 14px; }
+
+/* ---------- фото */
+#viewPhotos { display: flex; flex-direction: column; }
+.ptools { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.ptools .opts { display: flex; align-items: center; gap: 14px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); flex-wrap: wrap; }
+.ptools .opts select { height: 28px; padding: 2px 6px; }
+.hintline { font-size: 12px; color: var(--muted); }
+.facebox { display: inline-flex; align-items: center; gap: 8px; padding: 2px 8px; border-radius: 7px; }
+.facebox.on { background: var(--warn-soft); }
+#banner:empty { display: none; }
+.banner { display: flex; align-items: center; gap: 12px; padding: 9px 16px; font-size: 13px; border-bottom: 1px solid var(--line); background: var(--accent-soft); flex-wrap: wrap; }
+.banner.warn { background: var(--warn-soft); }
+.banner.err { background: var(--danger-soft); color: var(--danger); }
+.banner .bar { width: 200px; }
+.banner .bar i { background: var(--accent); }
+.pwrap { flex: 1; display: grid; grid-template-columns: 290px 1fr; min-height: 0; }
+#folders { border-right: 1px solid var(--line); overflow: auto; background: var(--panel); padding: 10px 8px 40px; }
+.fgroup { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); font-weight: 700; padding: 12px 10px 5px; }
+.folder { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 7px; cursor: pointer; border: 1px dashed transparent; font-size: 13px; }
+.folder:hover { background: var(--panel-2); }
+.folder.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.folder .ic { width: 16px; text-align: center; flex: none; color: var(--faint); }
+.folder .fl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder .fc { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.folder.warnf .fc { color: var(--warn); font-weight: 700; }
+.folder .sdot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--todo); }
+.folder .sdot.st-done { background: var(--done); } .folder .sdot.st-provided { background: var(--provided); } .folder .sdot.st-executed { background: var(--executed); } .folder .sdot.st-na { background: var(--na); }
+.folder.l2 { padding-left: 24px; } .folder.l3 { padding-left: 38px; }
+.pmain { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.gridhead { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid var(--line-2); flex-wrap: wrap; min-height: 50px; }
+.gridhead h3 { margin: 0; font-size: 15px; }
+.gridhead .sub { color: var(--muted); font-size: 12px; }
+.selbar { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px; border-radius: 9px; background: var(--ink); color: var(--bg); font-size: 13px; flex-wrap: wrap; }
+.selbar select { height: 28px; padding: 2px 6px; max-width: 260px; background: var(--panel); color: var(--ink); }
+.selbar .btn { height: 28px; }
+#grid { flex: 1; overflow: auto; padding: 16px 18px 60px; display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 14px; align-content: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.card.sel { outline: 3px solid var(--accent); outline-offset: -1px; }
+.card .imgbox { position: relative; aspect-ratio: 4 / 3; background: var(--line-2); cursor: zoom-in; }
+.card .imgbox img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card .proc { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
+.card .proc.err { color: var(--danger); padding: 10px; text-align: center; }
+.card .pick { position: absolute; left: 7px; top: 7px; width: 24px; height: 24px; border-radius: 6px; background: rgba(255,255,255,.88); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.card .pick input { width: 15px; height: 15px; accent-color: var(--accent); margin: 0; cursor: pointer; }
+.badges { position: absolute; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.badge { font-size: 10.5px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: rgba(15,20,18,.72); color: #fff; white-space: nowrap; }
+.badge.g { background: rgba(29,127,79,.92); } .badge.w { background: rgba(168,101,15,.92); } .badge.r { background: rgba(184,50,42,.92); } .badge.v { background: rgba(115,64,184,.92); }
+.card .cap { padding: 7px 10px 4px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.card .nm { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .where { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .where.auto { color: var(--warn); }
+.card .where.conf { color: var(--done); }
+.sugg { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 10px 9px; }
+.sugg button { font-size: 11px; border: 1px solid var(--line); background: var(--panel-2); border-radius: 12px; padding: 1px 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.sugg button:hover { border-color: var(--accent); color: var(--accent); }
+.gempty { grid-column: 1 / -1; }
+
+/* ---------- просмотр фото */
+.modal { position: fixed; inset: 0; background: rgba(8,12,10,.78); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.vbox { background: var(--panel); border-radius: 14px; width: min(1500px, 100%); height: min(920px, 100%); display: grid; grid-template-columns: 1fr 340px; overflow: hidden; position: relative; }
+.vimg { position: relative; background: #0d0f0e; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; }
+.cmp { position: relative; max-width: 100%; max-height: 100%; line-height: 0; user-select: none; }
+.cmp img { max-width: 100%; max-height: calc(min(920px, 100vh - 48px) - 60px); display: block; }
+.cmp .bw { position: absolute; inset: 0; clip-path: inset(0 calc(100% - var(--x, 50%)) 0 0); }
+.cmp .bw img { width: 100%; height: 100%; object-fit: contain; }
+.cmp .handle { position: absolute; top: 0; bottom: 0; left: var(--x, 50%); width: 2px; background: #fff; box-shadow: 0 0 6px rgba(0,0,0,.6); pointer-events: none; }
+.cmp .handle::after { content: "‹ ›"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fff; color: #111; font: 700 13px/28px var(--font); width: 44px; height: 28px; border-radius: 14px; text-align: center; }
+.cmp input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; margin: 0; }
+.vlabels { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; pointer-events: none; }
+.vlabels span { background: rgba(0,0,0,.6); color: #fff; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 5px; letter-spacing: .05em; text-transform: uppercase; }
+.vnav { position: absolute; top: 50%; transform: translateY(-50%); width: 42px; height: 64px; border: 0; border-radius: 8px; background: rgba(255,255,255,.12); color: #fff; font-size: 28px; }
+.vnav:hover { background: rgba(255,255,255,.25); }
+.vnav.prev { left: 10px; } .vnav.next { right: 10px; }
+.vside { border-left: 1px solid var(--line); overflow: auto; padding: 18px 18px 30px; display: flex; flex-direction: column; gap: 14px; }
+.vside h3 { margin: 0; font-size: 15px; overflow-wrap: anywhere; padding-right: 30px; }
+.vside .meta { font-size: 12px; color: var(--muted); }
+.vside .blk { display: flex; flex-direction: column; gap: 6px; }
+.vside .blk > .t { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); font-weight: 700; }
+.vside select { width: 100%; height: 32px; }
+.vside .seg button { padding: 4px 9px; }
+.qual { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12.5px; }
+.qual span:nth-child(odd) { color: var(--muted); }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.tag { font-size: 11.5px; padding: 2px 8px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.tag.w { background: var(--warn-soft); border-color: transparent; color: var(--warn); }
+.tag.g { background: var(--done-soft); border-color: transparent; color: var(--done); }
+.vclose { position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); font-size: 18px; line-height: 1; z-index: 2; }
+
+/* ---------- отчёт */
+#viewReport { overflow: auto; }
+.rwrap { max-width: 1060px; margin: 0 auto; padding: 26px 24px 60px; display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+.box h2 { margin: 0 0 12px; font-size: 16px; }
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+.kpi { padding: 10px 12px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--line-2); }
+.kpi .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kpi .l { font-size: 11.5px; color: var(--muted); }
+.kpi.done .v { color: var(--done); } .kpi.warn .v { color: var(--warn); }
+table.rt { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.rt th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+table.rt td { padding: 7px 8px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+table.rt td.n { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
+.pill { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 9px; white-space: nowrap; }
+.pill.st-todo { background: var(--line-2); color: var(--muted); } .pill.st-done { background: var(--done-soft); color: var(--done); }
+.pill.st-provided { background: var(--provided-soft); color: var(--provided); } .pill.st-executed { background: var(--executed-soft); color: var(--executed); } .pill.st-na { background: var(--na-soft); color: var(--na); }
+.nophoto { color: var(--warn); font-weight: 600; }
+.exp { display: flex; flex-direction: column; gap: 10px; }
+.exp .row { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.exp .btn { justify-content: center; }
+.exp .big { height: 40px; font-size: 14px; }
+.exp hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; width: 100%; }
+.exp .note { font-size: 12px; color: var(--muted); }
+.pathbox { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; padding: 8px; overflow-wrap: anywhere; user-select: all; }
+
+/* ---------- общее */
+#dropOverlay { position: fixed; inset: 0; background: rgba(31,95,74,.18); border: 4px dashed var(--accent); z-index: 40; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+#dropOverlay div { background: var(--panel); padding: 18px 26px; border-radius: 12px; font-size: 16px; font-weight: 600; box-shadow: var(--shadow); }
+#toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 60; align-items: center; pointer-events: none; }
+#toast div { background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 9px; font-size: 13px; box-shadow: var(--shadow); max-width: 640px; }
+#toast div.err { background: var(--danger); color: #fff; }
+#upl { position: fixed; right: 18px; bottom: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 10px 14px; z-index: 45; width: 280px; font-size: 13px; }
+#upl .bar { margin-top: 6px; } #upl .bar i { background: var(--accent); }
+@media (max-width: 1000px) {
+  #viewTz { grid-template-columns: 1fr; } #viewTz .pane.left { display: none; }
+  .pwrap { grid-template-columns: 220px 1fr; } .rwrap { grid-template-columns: 1fr; } .vbox { grid-template-columns: 1fr; grid-template-rows: 60% 40%; }
+  .vside { border-left: 0; border-top: 1px solid var(--line); } .row2 { grid-template-columns: 1fr; } .kpis { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand" id="home" title="Все проекты"><img src="/favicon.svg" alt="">ФотоОтчёт</div>
+  <div class="crumb" id="crumb" hidden><span>/</span><b id="prjName"></b></div>
+  <nav class="tabs" id="tabs" hidden>
+    <button data-tab="tz">ТЗ и исполнение</button>
+    <button data-tab="photos">Фото<span class="cnt" id="unsortedCnt" hidden></span></button>
+    <button data-tab="report">Отчёт</button>
+  </nav>
+  <span class="spacer"></span>
+  <span class="chip" id="jobChip" hidden><span class="dot"></span><span class="t"></span></span>
+  <span class="chip" id="modelChip" title="Модель распознавания фото"><span class="dot"></span><span class="t">Модель…</span></span>
+</header>
+
+<main>
+  <!-- ======================= Проекты -->
+  <section class="view" id="viewProjects" hidden>
+    <div class="pwrapper">
+      <div class="phead">
+        <div>
+          <h1>Проекты</h1>
+          <p>Один проект — одно ТЗ заказчика и все фото по нему. Данные хранятся только на этом компьютере.</p>
+        </div>
+      </div>
+      <form class="newprj" id="newPrj">
+        <span class="lbl">Новый проект</span>
+        <input id="npName" placeholder="Название, например «Банкет 25 октября»" required>
+        <input id="npCust" placeholder="Заказчик (необязательно)">
+        <button class="btn primary" type="submit">Создать</button>
+      </form>
+      <div class="pgrid" id="pgrid"></div>
+      <p class="hintline" id="dataDir" style="margin-top:22px"></p>
+    </div>
+  </section>
+
+  <!-- ======================= ТЗ и исполнение -->
+  <section class="view" id="viewTz" hidden>
+    <div class="pane left">
+      <div class="panehead">
+        <h2>Оригинал ТЗ</h2>
+        <span class="fname" id="tzFile"></span>
+        <span class="spacer"></span>
+        <a class="btn sm ghost" id="tzDownload" href="#" download>Скачать</a>
+        <label class="btn sm">Заменить ТЗ<input type="file" id="tzReplace" accept=".docx,.pdf,.xlsx,.xlsm,.csv,.txt,.md" hidden></label>
+      </div>
+      <div class="panebody" id="orig"></div>
+    </div>
+    <div class="pane right">
+      <div class="panehead exec-head">
+        <h2>Исполнение</h2>
+        <div class="progress-line"><div class="bar" id="execBar"></div><span class="txt" id="execTxt"></span></div>
+        <label class="btn sm" id="tzLoadRight" hidden>Загрузить файл ТЗ<input type="file" id="tzInput2" accept=".docx,.pdf,.xlsx,.xlsm,.csv,.txt,.md" hidden></label>
+        <button class="btn sm" id="addItem">+ Пункт</button>
+      </div>
+      <div class="filters" id="filters"></div>
+      <div class="panebody" id="itemsBody">
+        <div id="tzEmpty" class="tz-empty" hidden>
+          <div class="drop" id="tzDrop">
+            <h2>Загрузите ТЗ заказчика</h2>
+            <p>Перетащите файл сюда или выберите на компьютере. Каждый пункт ТЗ станет карточкой со статусом и местом для фото, а для фото сразу появятся папки.</p>
+            <label class="btn primary">Выбрать файл ТЗ<input type="file" id="tzInput" accept=".docx,.pdf,.xlsx,.xlsm,.csv,.txt,.md" hidden></label>
+            <button class="btn ghost" id="addFirst" type="button">или добавить пункты вручную</button>
+            <div class="formats">Word (.docx) · PDF · Excel (.xlsx) · CSV · текст</div>
+          </div>
+        </div>
+        <div id="items"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= Фото -->
+  <section class="view" id="viewPhotos" hidden>
+    <div class="ptools">
+      <label class="btn primary">Загрузить фото<input type="file" id="phInput" multiple accept="image/*,.heic,.heif,.zip" hidden></label>
+      <span class="hintline">или перетащите фото и ZIP-архивы в окно</span>
+      <span class="spacer"></span>
+      <div class="opts">
+        <label class="chk" title="Тёмные, смазанные, блёклые и шумные кадры исправляются автоматически; исходник не меняется">Улучшение
+          <select id="optEnh"><option value="auto">где нужно</option><option value="all">все фото</option><option value="off">не улучшать</option></select>
+        </label>
+        <span class="facebox" id="faceBox">
+          <label class="chk"><input type="checkbox" id="optFaces"> Замазывать лица</label>
+          <select id="optFaceMode"><option value="blur">размытие</option><option value="pixelate">пиксели</option></select>
+        </span>
+      </div>
+      <button class="btn" id="btnReclass" title="Заново разложить фото, которые не подтверждены вручную">Разложить заново</button>
+    </div>
+    <div id="banner"></div>
+    <div class="pwrap">
+      <aside id="folders"></aside>
+      <div class="pmain">
+        <div class="gridhead">
+          <div><h3 id="gTitle"></h3><div class="sub" id="gSub"></div></div>
+          <span class="spacer"></span>
+          <div class="selbar" id="selbar" hidden>
+            <span id="selN"></span>
+            <select id="selMove"></select>
+            <button class="btn sm" id="selConfirm">Подтвердить</button>
+            <button class="btn sm danger" id="selDelete">Удалить</button>
+            <button class="btn sm ghost" id="selClear" style="color:inherit">✕</button>
+          </div>
+          <button class="btn sm ghost" id="selAll">Выбрать все</button>
+        </div>
+        <div id="grid"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= Отчёт -->
+  <section class="view" id="viewReport" hidden>
+    <div class="rwrap">
+      <div class="box">
+        <h2>Состав отчёта</h2>
+        <div class="kpis" id="kpis"></div>
+        <div style="overflow-x:auto"><table class="rt" id="rtable"></table></div>
+      </div>
+      <div class="box exp">
+        <h2>Выгрузить</h2>
+        <div class="row"><span>Фото в ряд</span><select id="rPer"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></div>
+        <label class="chk"><input type="checkbox" id="rOnlyDone"> Только выполненные пункты</label>
+        <label class="chk"><input type="checkbox" id="rUnsorted"> Добавить неразобранные фото</label>
+        <button class="btn primary big" data-exp="docx">Отчёт Word (.docx)</button>
+        <button class="btn big" data-exp="pdf">Отчёт PDF</button>
+        <button class="btn big" data-exp="xlsx">Таблица Excel</button>
+        <hr>
+        <div class="row"><span>Фото в папках</span><select id="rWhich"><option value="work">обработанные</option><option value="original">оригиналы</option></select></div>
+        <button class="btn big" data-exp="zip">ZIP-архив по папкам</button>
+        <button class="btn big" id="toFolders">Разложить по папкам на диске</button>
+        <div class="pathbox" id="folderPath" hidden></div>
+        <p class="note">Папки называются как пункты ТЗ: «№ — название». Фото, лица на которых скрыты, выгружаются уже скрытыми.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="viewer" hidden>
+  <div class="vbox">
+    <div class="vimg">
+      <div class="cmp" id="cmp">
+        <img id="vAfter" alt="">
+        <div class="bw" id="vBeforeWrap"><img id="vBefore" alt=""></div>
+        <div class="handle" id="vHandle"></div>
+        <input type="range" id="vSplit" min="0" max="100" value="50" aria-label="Сравнить до и после">
+      </div>
+      <div class="vlabels" id="vLabels"><span>До</span><span>После</span></div>
+      <button class="vnav prev" id="vPrev" title="Предыдущее (←)">‹</button>
+      <button class="vnav next" id="vNext" title="Следующее (→)">›</button>
+    </div>
+    <aside class="vside" id="vSide"></aside>
+    <button class="vclose" id="vClose" title="Закрыть (Esc)">×</button>
+  </div>
+</div>
+<div id="dropOverlay" hidden><div>Отпустите, чтобы загрузить</div></div>
+<div id="upl" hidden><div id="uplT"></div><div class="bar"><i id="uplBar" style="width:0"></i></div></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const STATUS = [['todo', 'Не начато'], ['done', 'Выполнено'], ['provided', 'Предоставлено'], ['executed', 'Исполнено'], ['na', 'Не требуется']];
+const SLABEL = Object.fromEntries(STATUS);
+const DONE = new Set(['done', 'provided', 'executed']);
+const APPLIED = { exposure: 'яркость', gamma: 'яркость', brightness: 'яркость', shadows: 'тени', highlights: 'пересвет',
+  clahe: 'локальный контраст', levels: 'тональность', contrast: 'контраст', white_balance: 'баланс белого', wb: 'баланс белого', denoise: 'шумоподавление',
+  sharpen: 'резкость', unsharp: 'резкость', deblur: 'резкость', saturation: 'насыщенность', vibrance: 'насыщенность' };
+const FLAGS = { dark: 'тёмное', underexposed: 'тёмное', bright: 'пересвет', overexposed: 'пересвет', blurry: 'смазано', very_blurry: 'сильно смазано', blur: 'смазано',
+  low_contrast: 'блёклое', noisy: 'шум', noise: 'шум', color_cast: 'цветной оттенок', cast: 'цветной оттенок', tilted: 'завален горизонт' };
+const S = { pid: null, prj: null, tab: 'tz', folder: 'all', sel: new Set(), filter: 'all', model: null, job: null,
+  origFor: null, vIndex: -1, vList: [], busyUpload: false };
+
+// ------------------------------------------------------------------ сеть
+async function api(method, url, body, form) {
+  const opt = { method, headers: {} };
+  if (body !== undefined) {
+    if (form) opt.body = body; else { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  }
+  const r = await fetch(url, opt);
+  let data = null;
+  try { data = await r.json(); } catch (e) { /* не JSON */ }
+  if (!r.ok) {
+    let msg = data && data.detail;
+    if (Array.isArray(msg)) msg = msg.map(x => x.msg).join('; ');
+    toast(msg || `Ошибка ${r.status}`, 'err');
+    throw new Error(msg || r.status);
+  }
+  return data;
+}
+function upload(url, files, extra) {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    for (const f of files) fd.append('files', f, f.name);
+    for (const [k, v] of Object.entries(extra || {})) fd.append(k, v);
+    const x = new XMLHttpRequest();
+    x.open('POST', url);
+    x.upload.onprogress = e => { if (e.lengthComputable && S.uplCb) S.uplCb(e.loaded / e.total); };
+    x.onload = () => {
+      let d = null; try { d = JSON.parse(x.responseText); } catch (e) { /* */ }
+      if (x.status >= 200 && x.status < 300) resolve(d); else { toast((d && d.detail) || `Ошибка загрузки ${x.status}`, 'err'); reject(new Error(x.status)); }
+    };
+    x.onerror = () => { toast('Сервер недоступен', 'err'); reject(new Error('net')); };
+    x.send(fd);
+  });
+}
+function toast(msg, kind) {
+  const el = document.createElement('div');
+  el.textContent = msg; if (kind) el.className = kind;
+  $('#toast').append(el); setTimeout(() => el.remove(), kind === 'err' ? 6500 : 3200);
+}
+const P = () => `/api/projects/${S.pid}`;
+const thumbUrl = p => `${P()}/photos/${p.id}/thumb?v=${p.ver || 0}`;
+const itemById = id => (S.prj.items || []).find(i => i.id === id);
+const photoById = id => (S.prj.photos || []).find(p => p.id === id);
+const itemLabel = it => it ? `${it.num ? it.num + ' ' : ''}${it.title || 'Без названия'}` : 'Неразобранное';
+const pct = x => `${Math.round((x || 0) * 100)}%`;
+const reshootOf = p => (p.reshoot === true || p.reshoot === false) ? p.reshoot : !!p.reshoot_auto;
+
+// ------------------------------------------------------------------ навигация
+function setHash() { const h = S.pid ? `#${S.pid}/${S.tab}` : '#'; if (location.hash !== h) history.replaceState(null, '', h); }
+function show(view) {
+  for (const v of ['viewProjects', 'viewTz', 'viewPhotos', 'viewReport']) $('#' + v).hidden = v !== view;
+  $('#tabs').hidden = $('#crumb').hidden = view === 'viewProjects';
+}
+async function goProjects() {
+  S.pid = null; S.prj = null; setHash(); show('viewProjects'); $('#jobChip').hidden = true;
+  const d = await api('GET', '/api/projects');
+  $('#dataDir').textContent = `Папка с проектами: ${d.data_dir}`;
+  const g = $('#pgrid');
+  if (!d.projects.length) {
+    g.innerHTML = `<div class="empty" style="grid-column:1/-1"><h2>Проектов пока нет</h2>Создайте первый: введите название выше и нажмите «Создать».</div>`;
+    return;
+  }
+  g.innerHTML = d.projects.map(p => {
+    const by = p.by_status || {}; const tot = p.items || 0;
+    const seg = ['done', 'provided', 'executed', 'na'].map(k => tot ? `<i class="b-${k}" style="width:${(by[k] || 0) / tot * 100}%"></i>` : '').join('');
+    const ready = (by.done || 0) + (by.provided || 0) + (by.executed || 0);
+    return `<div class="pcard" data-id="${esc(p.id)}">
+      <button class="btn sm ghost del" data-del="${esc(p.id)}" title="Удалить проект">🗑</button>
+      <h3>${esc(p.name)}</h3>${p.customer ? `<div class="cust">${esc(p.customer)}</div>` : ''}
+      <div class="tzt">${p.tz_title ? 'ТЗ: ' + esc(p.tz_title) : 'ТЗ не загружено'}</div>
+      <div class="bar">${seg}</div>
+      <div class="stats"><span>Пунктов <b>${tot}</b></span><span>Готово <b>${ready}</b></span><span>Фото <b>${p.photos}</b></span>
+        ${p.unsorted ? `<span class="warn">Неразобрано <b>${p.unsorted}</b></span>` : ''}</div>
+      <div class="stats"><span>Изменён ${esc((p.updated || '').slice(0, 16))}</span></div></div>`;
+  }).join('');
+}
+async function openProject(pid, tab) {
+  S.pid = pid; S.folder = 'all'; S.sel.clear(); S.origFor = null; S.filter = 'all';
+  try { S.prj = await api('GET', P()); } catch (e) { return goProjects(); }
+  S.job = S.prj.job;
+  S.tab = tab || (S.prj.items.length ? 'tz' : 'tz');
+  $$('#items > .item').forEach(e => e.remove());
+  renderAll();
+}
+function setTab(tab) { S.tab = tab; renderAll(); }
+function renderAll() {
+  setHash();
+  $('#prjName').textContent = S.prj.name + (S.prj.customer ? ` · ${S.prj.customer}` : '');
+  $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
+  show({ tz: 'viewTz', photos: 'viewPhotos', report: 'viewReport' }[S.tab]);
+  renderData();
+}
+function renderData() {
+  const un = (S.prj.photos || []).filter(p => !p.item_id).length;
+  const c = $('#unsortedCnt'); c.hidden = !un || !(S.prj.items || []).length; c.textContent = un;
+  if (S.tab === 'tz') renderTz();
+  else if (S.tab === 'photos') renderPhotos();
+  else renderReport();
+  if (!$('#viewer').hidden) renderViewer();
+}
+
+// ------------------------------------------------------------------ статус и опрос
+function renderStatus() {
+  const m = S.model, mc = $('#modelChip');
+  if (m) {
+    mc.className = 'chip ' + (m.ready ? 'ok' : m.error ? 'err' : m.downloading ? 'busy' : '');
+    $('.t', mc).textContent = m.ready ? 'Распознавание готово' : m.downloading ? `Модель: ${pct(m.progress)}` : m.error ? 'Модель не загружена' : 'Модель не скачана';
+    mc.title = m.error || (m.ready ? 'Модель распознавания загружена' : `Модель распознавания ~${m.size_mb || 230} МБ, скачивается один раз`);
+  }
+  const j = S.job, jc = $('#jobChip');
+  if (S.pid && j && j.running) {
+    jc.hidden = false; jc.className = 'chip busy';
+    $('.t', jc).textContent = j.stage === 'classifying' ? 'Раскладка по папкам…' : `Обработка ${j.done} из ${j.total}`;
+  } else jc.hidden = true;
+  if (S.tab === 'photos' && S.pid) renderBanner();
+}
+async function tick() {
+  try {
+    if (S.pid) {
+      const st = await fetch(`${P()}/status`).then(r => r.ok ? r.json() : null);
+      if (!st) return;
+      S.model = st.model; const wasRunning = S.job && S.job.running; S.job = st.job;
+      renderStatus();
+      if (S.prj && st.rev !== S.prj.rev) { S.prj = await api('GET', P()); renderData(); }
+      else if (wasRunning && !st.job.running) { S.prj = await api('GET', P()); renderData(); }
+    } else {
+      S.model = await fetch('/api/model').then(r => r.json()); renderStatus();
+    }
+  } catch (e) { /* сервер перезапускается */ }
+}
+setInterval(tick, 1500);
+
+// ------------------------------------------------------------------ ТЗ и исполнение
+function renderTz() {
+  const items = S.prj.items || [], tz = S.prj.tz || {};
+  const hasOrig = !!(tz.html || tz.pages);
+  $('#viewTz').classList.toggle('noorig', !hasOrig);
+  $('#tzLoadRight').hidden = hasOrig || !items.length;
+  $('#tzEmpty').hidden = items.length > 0;
+  $('#filters').hidden = !items.length;
+  $('#tzFile').textContent = tz.file ? tz.file.replace(/^tz\//, '') : '';
+  $('#tzDownload').href = `${P()}/tz/file`;
+  $('#tzDownload').hidden = !tz.file;
+  if (hasOrig && S.origFor !== (tz.loaded || '')) loadOriginal();
+  // прогресс
+  const cnt = { todo: 0, done: 0, provided: 0, executed: 0, na: 0 };
+  items.forEach(i => cnt[i.status] = (cnt[i.status] || 0) + 1);
+  const need = items.length - cnt.na, ready = cnt.done + cnt.provided + cnt.executed;
+  const withPh = items.filter(i => (i.photo_ids || []).length).length;
+  $('#execBar').innerHTML = items.length ? ['done', 'provided', 'executed', 'na'].map(k => `<i class="b-${k}" style="width:${cnt[k] / items.length * 100}%"></i>`).join('') : '';
+  $('#execTxt').textContent = items.length ? `готово ${ready} из ${need} · с фото ${withPh} из ${items.length}` : '';
+  // фильтры
+  const fl = [['all', 'Все', items.length], ['todo', 'Не начато', cnt.todo], ['ready', 'Готово', ready], ['nophoto', 'Без фото', items.filter(i => !(i.photo_ids || []).length && i.status !== 'na').length], ['auto', 'Проверить фото', items.filter(i => (i.photo_ids || []).some(id => { const p = photoById(id); return p && !p.confirmed; })).length]];
+  $('#filters').innerHTML = fl.map(([k, l, n]) => `<button data-f="${k}" class="${S.filter === k ? 'on' : ''}">${l} · ${n}</button>`).join('');
+  renderItems();
+}
+function filteredItems() {
+  const items = S.prj.items || [];
+  switch (S.filter) {
+    case 'todo': return items.filter(i => i.status === 'todo');
+    case 'ready': return items.filter(i => DONE.has(i.status));
+    case 'nophoto': return items.filter(i => !(i.photo_ids || []).length && i.status !== 'na');
+    case 'auto': return items.filter(i => (i.photo_ids || []).some(id => { const p = photoById(id); return p && !p.confirmed; }));
+    default: return items;
+  }
+}
+async function loadOriginal() {
+  const tz = S.prj.tz || {}; const box = $('#orig');
+  S.origFor = tz.loaded || '';
+  if (tz.html) {
+    const html = await fetch(`${P()}/tz/html`).then(r => r.ok ? r.text() : '');
+    const doc = document.createElement('div'); doc.className = 'orig-doc'; doc.append(sanitize(html));
+    box.replaceChildren(doc);
+  } else if (tz.pages) {
+    box.innerHTML = Array.from({ length: tz.pages }, (_, i) => `<div class="page-wrap" data-page="${i + 1}"><img loading="lazy" alt="Страница ${i + 1}" src="${P()}/tz/pages/${i + 1}.png?v=${encodeURIComponent(tz.loaded || '')}"><div class="pn">стр. ${i + 1}</div></div>`).join('');
+  }
+}
+function sanitize(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script,style,iframe,object,embed,link,meta,base,form,input,button').forEach(n => n.remove());
+  doc.querySelectorAll('*').forEach(el => {
+    for (const a of [...el.attributes]) {
+      if (/^on/i.test(a.name) || (/^(href|src|xlink:href|action)$/i.test(a.name) && /^\s*(javascript|vbscript):/i.test(a.value))) el.removeAttribute(a.name);
+    }
+  });
+  const frag = document.createDocumentFragment();
+  [...doc.body.childNodes].forEach(n => frag.append(document.importNode(n, true)));
+  return frag;
+}
+function highlightSource(it) {
+  $$('#orig .hl').forEach(e => e.classList.remove('hl'));
+  const src = it.source || {};
+  let el = null;
+  if (src.ref) el = $(`#orig [data-src="${CSS.escape(src.ref)}"]`);
+  if (!el && src.page) el = $(`#orig [data-page="${src.page}"]`);
+  if (el) { el.classList.add('hl'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+}
+function renderItems() {
+  const list = $('#items'), items = filteredItems();
+  if (!(S.prj.items || []).length) { list.replaceChildren(); return; }
+  let title = $('#docTitle');
+  if (!title) { title = document.createElement('div'); title.id = 'docTitle'; title.className = 'doc-title'; }
+  const tz = S.prj.tz || {};
+  title.innerHTML = `<div class="kicker">Исполнение ТЗ</div><h1>${esc(tz.title || S.prj.name)}</h1><div class="sub">${esc(S.prj.customer || '')}${S.prj.customer ? ' · ' : ''}проект «${esc(S.prj.name)}»</div>`;
+  if (list.firstElementChild !== title) list.prepend(title);
+  const existing = new Map($$('#items > .item').map(el => [el.dataset.id, el]));
+  items.forEach((it, idx) => {
+    let el = existing.get(it.id);
+    if (!el) el = buildItem(it);
+    existing.delete(it.id);
+    updateItem(el, it);
+    const at = list.children[idx + 1];
+    if (at !== el) list.insertBefore(el, at || null);
+  });
+  existing.forEach(el => el.remove());
+}
+function buildItem(it) {
+  const el = document.createElement('article');
+  el.className = 'item'; el.dataset.id = it.id;
+  el.innerHTML = `
+    <header class="ihead" title="Показать в оригинале"><span class="num"></span><h3 class="ititle"></h3><span class="stamp" hidden></span>
+      <button class="btn sm ghost more" title="Изменить пункт">✎</button></header>
+    <div class="itext" title="Развернуть"></div>
+    <div class="qty" hidden></div>
+    <div class="seg">${STATUS.map(([k, l]) => `<button data-st="${k}" class="s-${k}" type="button">${l}</button>`).join('')}</div>
+    <div class="row2">
+      <textarea class="comment" rows="1" placeholder="Комментарий: что сделано, замечания"></textarea>
+      <input class="hint" placeholder="Что на фото — подсказка для автосортировки" title="Например: «банкетные столы, белые скатерти». Помогает разложить фото точнее">
+    </div>
+    <div class="strip"></div>
+    <div class="editbox" hidden>
+      <label>Номер</label><input class="e-num">
+      <label>Название</label><input class="e-title">
+      <label>Текст</label><textarea class="e-text" rows="3"></textarea>
+      <label>Количество</label><div style="display:flex;gap:6px"><input class="e-qty" style="width:90px"><input class="e-unit" placeholder="ед." style="width:90px"></div>
+      <label>Уровень</label><select class="e-level"><option value="1">пункт</option><option value="2">подпункт</option><option value="3">подпункт 3-го уровня</option></select>
+      <div class="acts"><button class="btn sm danger e-del" type="button">Удалить пункт</button><span class="spacer"></span>
+        <button class="btn sm e-add" type="button">+ Пункт ниже</button><button class="btn sm ghost e-cancel" type="button">Отмена</button><button class="btn sm primary e-save" type="button">Сохранить</button></div>
+    </div>`;
+  const id = it.id;
+  $('.ihead', el).addEventListener('click', e => { if (e.target.closest('.more')) return; const x = itemById(id); if (x) highlightSource(x); });
+  $('.itext', el).addEventListener('click', e => e.currentTarget.classList.toggle('open'));
+  $$('.seg button', el).forEach(b => b.addEventListener('click', () => setStatus(id, b.dataset.st)));
+  const cm = $('.comment', el), hint = $('.hint', el);
+  cm.addEventListener('input', () => { autosize(cm); clearTimeout(cm._t); cm._t = setTimeout(() => patchItem(id, { comment: cm.value, reclassify: false }, cm), 700); });
+  hint.addEventListener('change', () => patchItem(id, { hint: hint.value }, hint));
+  $('.more', el).addEventListener('click', () => toggleEdit(el, id));
+  $('.e-cancel', el).addEventListener('click', () => { $('.editbox', el).hidden = true; });
+  $('.e-save', el).addEventListener('click', async () => {
+    await patchItem(id, { num: $('.e-num', el).value, title: $('.e-title', el).value, text: $('.e-text', el).value,
+      qty: $('.e-qty', el).value, unit: $('.e-unit', el).value, level: +$('.e-level', el).value });
+    $('.editbox', el).hidden = true; refresh();
+  });
+  $('.e-del', el).addEventListener('click', async () => {
+    if (!confirm('Удалить пункт? Фото из него перейдут в «Неразобранное».')) return;
+    S.prj = await api('DELETE', `${P()}/items/${id}`); renderData();
+  });
+  $('.e-add', el).addEventListener('click', async () => {
+    const x = itemById(id);
+    const r = await api('POST', `${P()}/items`, { after: id, level: x ? x.level : 1, title: 'Новый пункт' });
+    S.prj = r.project; renderData();
+    const ne = $(`#items .item[data-id="${r.item.id}"]`); if (ne) { toggleEdit(ne, r.item.id); ne.scrollIntoView({ block: 'center' }); }
+  });
+  bindDrop($('.strip', el), () => id);
+  return el;
+}
+function toggleEdit(el, id) {
+  const box = $('.editbox', el), it = itemById(id); if (!it) return;
+  box.hidden = !box.hidden;
+  if (!box.hidden) {
+    $('.e-num', el).value = it.num || ''; $('.e-title', el).value = it.title || ''; $('.e-text', el).value = it.text || '';
+    $('.e-qty', el).value = it.qty ?? ''; $('.e-unit', el).value = it.unit || ''; $('.e-level', el).value = String(Math.min(3, it.level || 1));
+    $('.e-title', el).focus();
+  }
+}
+function autosize(t) { t.style.height = 'auto'; t.style.height = Math.min(160, Math.max(32, t.scrollHeight + 2)) + 'px'; }
+function updateItem(el, it) {
+  const lvl = Math.min(4, it.level || 1);
+  const isSection = lvl === 1 && (S.prj.items || []).some(x => (x.level || 1) > 1) && !it.text;
+  el.className = `item lvl-${lvl} st-${it.status}${isSection ? ' section' : ''}`;
+  $('.num', el).textContent = it.num || '—';
+  $('.ititle', el).textContent = it.title || 'Без названия';
+  const st = $('.stamp', el);
+  st.hidden = it.status === 'todo';
+  st.textContent = SLABEL[it.status] + (it.done_at && DONE.has(it.status) ? ` · ${it.done_at}` : '');
+  const tx = $('.itext', el); const showText = it.text && it.text.trim() !== (it.title || '').trim();
+  tx.hidden = !showText; tx.textContent = showText ? it.text : '';
+  const q = $('.qty', el); q.hidden = it.qty == null || it.qty === '';
+  q.innerHTML = q.hidden ? '' : `Количество: <b>${esc(it.qty)}</b> ${esc(it.unit || '')}`;
+  $$('.seg button', el).forEach(b => b.classList.toggle('on', b.dataset.st === it.status));
+  const cm = $('.comment', el), hint = $('.hint', el);
+  if (document.activeElement !== cm && cm.value !== (it.comment || '')) { cm.value = it.comment || ''; autosize(cm); }
+  if (document.activeElement !== hint && hint.value !== (it.hint || '')) hint.value = it.hint || '';
+  const ids = it.photo_ids || [];
+  const sig = ids.map(id => { const p = photoById(id); return p ? `${id}:${p.ver || 0}:${p.confirmed ? 1 : 0}:${p.status}` : id; }).join('|');
+  const strip = $('.strip', el);
+  if (strip.dataset.sig !== sig || !strip.childElementCount) {
+    strip.dataset.sig = sig;
+    const thumbs = ids.map(photoById).filter(Boolean).map(p => thumbHtml(p)).join('');
+    const free = Math.max(0, 3 - ids.length);
+    const slots = Array.from({ length: free }, () => `<div class="slot">место для фото</div>`).join('');
+    strip.innerHTML = thumbs + slots + `<label class="slot" title="Добавить фото в этот пункт">+ фото<input type="file" multiple accept="image/*,.heic,.heif,.zip" hidden></label>`;
+    $('input[type=file]', strip).addEventListener('change', e => { uploadPhotos([...e.target.files], it.id); e.target.value = ''; });
+    bindThumbs(strip);
+  }
+}
+function thumbHtml(p) {
+  const img = p.status === 'ready' || p.ver ? `<img loading="lazy" src="${thumbUrl(p)}" alt="">` : `<div class="proc" style="font-size:10px">обработка…</div>`;
+  const b = p.confirmed ? '' : `<span class="b">авто ${pct(p.confidence)}</span><button class="ok" data-ok="${p.id}" title="Верно — подтвердить">✓</button>`;
+  return `<div class="th ${p.confirmed ? '' : 'auto'}" draggable="true" data-ph="${p.id}" title="${esc(p.name)}">${img}${b}</div>`;
+}
+function bindThumbs(root) {
+  $$('.th', root).forEach(t => {
+    t.addEventListener('click', e => {
+      const ok = e.target.closest('[data-ok]');
+      if (ok) { e.stopPropagation(); confirmPhotos([ok.dataset.ok]); return; }
+      const ids = [...t.parentElement.querySelectorAll('.th')].map(x => x.dataset.ph);
+      openViewer(t.dataset.ph, ids);
+    });
+    t.addEventListener('dragstart', e => { e.dataTransfer.setData('text/x-photos', JSON.stringify([t.dataset.ph])); e.dataTransfer.effectAllowed = 'move'; });
+  });
+}
+async function setStatus(id, st) {
+  const it = itemById(id); if (!it) return;
+  it.status = st; if (!DONE.has(st) && st !== 'na') it.done_at = '';
+  renderTz();
+  const out = await api('PATCH', `${P()}/items/${id}`, { status: st });
+  Object.assign(it, out); renderTz();
+}
+async function patchItem(id, body, field) {
+  const out = await api('PATCH', `${P()}/items/${id}`, body);
+  const it = itemById(id); if (it) Object.assign(it, out);
+  if (field) { const s = document.createElement('span'); s.className = 'saved'; s.textContent = 'сохранено'; field.insertAdjacentElement('afterend', s); setTimeout(() => s.remove(), 1400); }
+}
+async function refresh() { S.prj = await api('GET', P()); renderData(); }
+
+async function uploadTz(file) {
+  if (!file) return;
+  const fd = new FormData(); fd.append('file', file, file.name);
+  toast(`Разбираю ТЗ «${file.name}»…`);
+  S.prj = await api('POST', `${P()}/tz`, fd, true);
+  S.origFor = null; S.filter = 'all';
+  $$('#items > .item').forEach(e => e.remove());
+  toast(`Готово: ${S.prj.items.length} пунктов. Папки для фото созданы.`);
+  renderData();
+}
+
+// ------------------------------------------------------------------ загрузка фото
+async function uploadPhotos(files, itemId) {
+  files = files.filter(f => /\.(jpe?g|png|heic|heif|tiff?|webp|bmp|zip)$/i.test(f.name) || /^image\//.test(f.type));
+  if (!files.length) { toast('Нет подходящих файлов: нужны фото (JPG, PNG, HEIC, TIFF, WEBP) или ZIP', 'err'); return; }
+  const box = $('#upl'); box.hidden = false;
+  let added = 0, dup = 0; const batches = [];
+  let cur = [], size = 0;
+  for (const f of files) { cur.push(f); size += f.size; if (cur.length >= 25 || size > 120e6) { batches.push(cur); cur = []; size = 0; } }
+  if (cur.length) batches.push(cur);
+  const total = files.length; let sent = 0;
+  try {
+    for (const b of batches) {
+      S.uplCb = frac => { $('#uplT').textContent = `Загрузка фото: ${Math.min(total, sent + Math.round(b.length * frac))} из ${total}`; $('#uplBar').style.width = `${(sent + b.length * frac) / total * 100}%`; };
+      S.uplCb(0);
+      const r = await upload(`${P()}/photos`, b, itemId ? { item_id: itemId } : null);
+      added += r.added; dup += r.skipped_duplicates.length; sent += b.length;
+    }
+    toast(`Загружено ${added} фото${dup ? `, повторы пропущены: ${dup}` : ''}. Идёт обработка и раскладка.`);
+  } finally { box.hidden = true; S.uplCb = null; }
+  await refresh();
+}
+function bindDrop(el, getItem) {
+  el.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); el.classList.add('over'); });
+  el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) el.classList.remove('over'); });
+  el.addEventListener('drop', async e => {
+    e.preventDefault(); e.stopPropagation(); el.classList.remove('over'); $('#dropOverlay').hidden = true;
+    const ids = e.dataTransfer.getData('text/x-photos');
+    const iid = getItem();
+    if (ids) { await movePhotos(JSON.parse(ids), iid); return; }
+    if (e.dataTransfer.files.length) uploadPhotos([...e.dataTransfer.files], iid);
+  });
+}
+async function movePhotos(ids, iid) {
+  S.prj = await api('POST', `${P()}/photos/bulk`, { action: 'assign', photo_ids: ids, item_id: iid || null });
+  toast(`${ids.length === 1 ? 'Фото перемещено' : `Перемещено фото: ${ids.length}`} → ${itemLabel(itemById(iid))}`);
+  renderData();
+}
+async function confirmPhotos(ids) {
+  S.prj = await api('POST', `${P()}/photos/bulk`, { action: 'confirm', photo_ids: ids });
+  renderData();
+}
+
+// глобальное перетаскивание файлов
+let dragDepth = 0;
+window.addEventListener('dragenter', e => { if (S.pid && [...e.dataTransfer.types].includes('Files')) { dragDepth++; $('#dropOverlay').hidden = false; } });
+window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('#dropOverlay').hidden = true; });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; $('#dropOverlay').hidden = true;
+  if (!S.pid || !e.dataTransfer.files.length) return;
+  const files = [...e.dataTransfer.files];
+  const doc = files.find(f => /\.(docx|pdf|xlsx|xlsm|csv|txt|md)$/i.test(f.name));
+  if (doc && (S.tab === 'tz' || !(S.prj.items || []).length) && files.length === 1) { uploadTz(doc); return; }
+  uploadPhotos(files, null);
+  if (S.tab !== 'photos') setTab('photos');
+});
+
+// ------------------------------------------------------------------ фото
+function photosIn(key) {
+  const ph = S.prj.photos || [];
+  switch (key) {
+    case 'all': return ph;
+    case 'unsorted': return ph.filter(p => !p.item_id);
+    case 'check': return ph.filter(p => p.item_id && !p.confirmed);
+    case 'dup': return ph.filter(p => p.duplicate_of);
+    case 'reshoot': return ph.filter(reshootOf);
+    case 'faces': return ph.filter(p => p.faces > 0);
+    case 'enh': return ph.filter(p => p.enhanced);
+    case 'err': return ph.filter(p => p.status === 'error');
+    default: { const it = itemById(key); return it ? (it.photo_ids || []).map(photoById).filter(Boolean) : []; }
+  }
+}
+function renderBanner() {
+  const m = S.model, j = S.job, b = $('#banner');
+  let html = '';
+  const hasItems = (S.prj.items || []).length;
+  if (j && j.running) {
+    const f = j.total ? j.done / j.total : 0;
+    html = `<div class="banner"><b>${j.stage === 'classifying' ? 'Раскладываю фото по папкам…' : `Обрабатываю фото: ${j.done} из ${j.total}`}</b>
+      <div class="bar"><i style="width:${j.stage === 'classifying' ? 100 : f * 100}%"></i></div><span class="hintline">качество, улучшение${S.prj.settings.blur_faces ? ', скрытие лиц' : ''}, распознавание</span></div>`;
+  } else if (m && !m.ready) {
+    if (m.downloading) html = `<div class="banner warn">Скачиваю модель распознавания (${pct(m.progress)} из ~${m.size_mb || 230} МБ, один раз). Фото уже можно загружать — разложу их, как только модель будет готова.<div class="bar"><i style="width:${(m.progress || 0) * 100}%"></i></div></div>`;
+    else if (m.error) html = `<div class="banner err">Модель распознавания не загрузилась: ${esc(m.error)} <button class="btn sm" data-act="model">Повторить</button></div>`;
+    else html = `<div class="banner warn">Для автоматической раскладки нужна модель распознавания (~${m.size_mb || 230} МБ, скачивается один раз). <button class="btn sm primary" data-act="model">Скачать</button></div>`;
+  } else if (!hasItems && (S.prj.photos || []).length) {
+    html = `<div class="banner warn">Загрузите ТЗ на вкладке «ТЗ и исполнение» — по его пунктам появятся папки, и фото разложатся автоматически. <button class="btn sm" data-act="totz">Перейти к ТЗ</button></div>`;
+  } else if (j && j.message && /не выполнена|ошибк/i.test(j.message)) {
+    html = `<div class="banner err">${esc(j.message)}</div>`;
+  }
+  if (b.innerHTML !== html) b.innerHTML = html;
+}
+function renderPhotos() {
+  const st = S.prj.settings || {};
+  $('#optEnh').value = st.enhance || 'auto';
+  $('#optFaces').checked = !!st.blur_faces;
+  $('#optFaceMode').value = st.face_mode || 'blur';
+  $('#optFaceMode').disabled = !st.blur_faces;
+  $('#faceBox').classList.toggle('on', !!st.blur_faces);
+  renderBanner();
+  // папки
+  const items = S.prj.items || [];
+  if (S.folder !== 'all' && !['unsorted', 'check', 'dup', 'reshoot', 'faces', 'enh', 'err'].includes(S.folder) && !itemById(S.folder)) S.folder = 'all';
+  const f = (key, label, ic, extra = '') => {
+    const n = photosIn(key).length;
+    return `<div class="folder ${S.folder === key ? 'on' : ''} ${extra}" data-folder="${esc(key)}">${ic}<span class="fl">${esc(label)}</span><span class="fc">${n}</span></div>`;
+  };
+  let h = f('all', 'Все фото', '<span class="ic">▦</span>');
+  const un = photosIn('unsorted').length, chk = photosIn('check').length;
+  h += f('unsorted', 'Неразобранное', '<span class="ic">⊡</span>', un ? 'warnf' : '');
+  if (chk) h += f('check', 'Разложено автоматически', '<span class="ic">?</span>');
+  if (items.length) {
+    h += `<div class="fgroup">Папки по пунктам ТЗ</div>`;
+    h += items.map(it => {
+      const n = (it.photo_ids || []).length;
+      return `<div class="folder l${Math.min(3, it.level || 1)} ${S.folder === it.id ? 'on' : ''}" data-folder="${it.id}" title="${esc(itemLabel(it))}"><span class="sdot st-${it.status}"></span><span class="fl">${esc(itemLabel(it))}</span><span class="fc">${n || ''}</span></div>`;
+    }).join('');
+  }
+  const extras = [['dup', 'Дубли', '⧉'], ['reshoot', 'Переснять', '↻'], ['faces', 'С лицами', '☺'], ['enh', 'Улучшенные', '✦'], ['err', 'Ошибки чтения', '!']].filter(([k]) => photosIn(k).length);
+  if (extras.length) h += `<div class="fgroup">Отборы</div>` + extras.map(([k, l, i]) => f(k, l, `<span class="ic">${i}</span>`)).join('');
+  const fold = $('#folders');
+  const scroll = fold.scrollTop; fold.innerHTML = h; fold.scrollTop = scroll;
+  $$('.folder', fold).forEach(el => {
+    el.addEventListener('click', () => { S.folder = el.dataset.folder; S.sel.clear(); renderPhotos(); $('#grid').scrollTop = 0; });
+    const key = el.dataset.folder;
+    if (key === 'unsorted' || itemById(key)) bindDrop(el, () => (key === 'unsorted' ? null : key));
+  });
+  // заголовок
+  const list = photosIn(S.folder);
+  const it = itemById(S.folder);
+  const titles = { all: 'Все фото', unsorted: 'Неразобранное', check: 'Разложено автоматически — проверьте', dup: 'Дубли', reshoot: 'Переснять: слишком тёмные или смазанные', faces: 'Фото с лицами', enh: 'Улучшенные автоматически', err: 'Не удалось прочитать' };
+  $('#gTitle').textContent = it ? itemLabel(it) : titles[S.folder];
+  const subs = { unsorted: 'Не нашёл уверенного пункта. Нажмите на подсказку под фото или перетащите фото в папку слева.', check: 'Нажмите ✓ на фото, если папка верная, — по подтверждённым фото остальные раскладываются точнее.', dup: 'Почти одинаковые кадры. В отчёт лучше взять один — самый резкий.' };
+  $('#gSub').textContent = it ? `${SLABEL[it.status]}${it.hint ? ' · подсказка: ' + it.hint : ''} · ${list.length} фото` : (subs[S.folder] || `${list.length} фото`);
+  // выделение
+  for (const id of [...S.sel]) if (!photoById(id)) S.sel.delete(id);
+  renderSelbar();
+  // сетка
+  const g = $('#grid'), scrollG = g.scrollTop;
+  if (!list.length) {
+    g.innerHTML = `<div class="empty gempty">${(S.prj.photos || []).length ? '<h2>Здесь пусто</h2>Перетащите сюда фото из другой папки.' : '<h2>Фото ещё нет</h2>Нажмите «Загрузить фото» или перетащите в окно фото и ZIP-архивы — хоть тысячу сразу.<br>Каждое фото будет проверено, при необходимости улучшено и разложено по пунктам ТЗ.'}</div>`;
+    return;
+  }
+  g.innerHTML = list.map(cardHtml).join('');
+  g.scrollTop = scrollG;
+  $$('.card', g).forEach(c => {
+    const id = c.dataset.ph;
+    $('.imgbox', c).addEventListener('click', e => { if (e.target.closest('.pick')) return; openViewer(id, list.map(p => p.id)); });
+    $('.pick input', c).addEventListener('change', e => { e.target.checked ? S.sel.add(id) : S.sel.delete(id); c.classList.toggle('sel', e.target.checked); renderSelbar(); });
+    c.addEventListener('dragstart', e => {
+      const ids = S.sel.has(id) ? [...S.sel] : [id];
+      e.dataTransfer.setData('text/x-photos', JSON.stringify(ids)); e.dataTransfer.effectAllowed = 'move';
+    });
+    $$('.sugg button', c).forEach(b => b.addEventListener('click', () => movePhotos([id], b.dataset.it)));
+  });
+}
+function cardHtml(p) {
+  const it = itemById(p.item_id);
+  let img;
+  if (p.status === 'error') img = `<div class="proc err">Не удалось прочитать файл<br>${esc(p.error || '')}</div>`;
+  else if (p.ver) img = `<img loading="lazy" src="${thumbUrl(p)}" alt="">`;
+  else img = `<div class="proc">обработка…</div>`;
+  const badges = [];
+  if (p.enhanced) badges.push(`<span class="badge g" title="${esc((p.applied || []).map(a => APPLIED[a] || a).join(', '))}">✦ улучшено</span>`);
+  if (p.faces_blurred) badges.push(`<span class="badge v">лица скрыты: ${p.faces}</span>`);
+  else if (p.faces > 0) badges.push(`<span class="badge">лиц: ${p.faces}</span>`);
+  if (p.duplicate_of) badges.push(`<span class="badge w">дубль</span>`);
+  if (reshootOf(p)) badges.push(`<span class="badge r">переснять</span>`);
+  let where;
+  if (it) where = p.confirmed ? `<span class="where conf">✓ ${esc(itemLabel(it))}</span>` : `<span class="where auto" title="Разложено автоматически">авто ${pct(p.confidence)} · ${esc(itemLabel(it))}</span>`;
+  else where = `<span class="where">Неразобранное</span>`;
+  const sug = !p.item_id ? (p.suggestions || []).filter(([iid]) => itemById(iid)).slice(0, 3).map(([iid, sc]) => `<button data-it="${esc(iid)}" title="Положить в «${esc(itemLabel(itemById(iid)))}»">${esc(itemLabel(itemById(iid)))} · ${pct(sc)}</button>`).join('') : '';
+  return `<div class="card ${S.sel.has(p.id) ? 'sel' : ''}" draggable="true" data-ph="${p.id}">
+    <div class="imgbox">${img}<label class="pick" title="Выбрать"><input type="checkbox" ${S.sel.has(p.id) ? 'checked' : ''}></label><div class="badges">${badges.join('')}</div></div>
+    <div class="cap"><span class="nm" title="${esc(p.name)}">${esc(p.name)}</span>${where}</div>${sug ? `<div class="sugg">${sug}</div>` : ''}</div>`;
+}
+function renderSelbar() {
+  const n = S.sel.size;
+  $('#selbar').hidden = !n; $('#selAll').hidden = !!n;
+  if (!n) return;
+  $('#selN').textContent = `Выбрано: ${n}`;
+  $('#selMove').innerHTML = `<option value="">Переместить в…</option><option value="__unsorted">Неразобранное</option>` + (S.prj.items || []).map(it => `<option value="${it.id}">${'  '.repeat(Math.min(3, it.level || 1) - 1)}${esc(itemLabel(it))}</option>`).join('');
+}
+
+// ------------------------------------------------------------------ просмотр фото
+function openViewer(id, list) { S.vList = list && list.length ? list : [id]; S.vIndex = Math.max(0, S.vList.indexOf(id)); $('#viewer').hidden = false; renderViewer(true); }
+function closeViewer() { $('#viewer').hidden = true; }
+function renderViewer(reload) {
+  const id = S.vList[S.vIndex]; const p = photoById(id);
+  if (!p) { closeViewer(); return; }
+  const changed = p.enhanced || p.faces_blurred;
+  const key = `${id}:${p.ver}`;
+  if (reload || $('#viewer').dataset.key !== key) {
+    $('#viewer').dataset.key = key;
+    $('#vAfter').src = p.ver ? `${P()}/photos/${id}/view?v=${p.ver}` : '';
+    $('#vBefore').src = changed ? `${P()}/photos/${id}/before?v=${p.ver}` : '';
+    $('#vSplit').value = 50; $('#cmp').style.setProperty('--x', '50%');
+  }
+  $('#vBeforeWrap').hidden = $('#vHandle').hidden = $('#vSplit').hidden = $('#vLabels').hidden = !changed;
+  $('#vPrev').hidden = S.vIndex <= 0; $('#vNext').hidden = S.vIndex >= S.vList.length - 1;
+  const it = itemById(p.item_id); const q = p.quality || {}; const ex = p.exif || {};
+  const opts = `<option value="">Неразобранное</option>` + (S.prj.items || []).map(x => `<option value="${x.id}" ${x.id === p.item_id ? 'selected' : ''}>${'  '.repeat(Math.min(3, x.level || 1) - 1)}${esc(itemLabel(x))}</option>`).join('');
+  const flags = (q.flags || []).map(f => `<span class="tag w">${esc(FLAGS[f] || f)}</span>`).join('');
+  const applied = (p.applied || []).map(a => `<span class="tag g">${esc(APPLIED[a] || a)}</span>`).join('');
+  const sug = (p.suggestions || []).filter(([iid]) => itemById(iid) && iid !== p.item_id).slice(0, 3).map(([iid, sc]) => `<button class="btn sm" data-it="${iid}">${esc(itemLabel(itemById(iid)))} · ${pct(sc)}</button>`).join('');
+  const enhOv = p.enhance_override || '', facesOv = p.faces_override === true ? 'yes' : p.faces_override === false ? 'no' : '';
+  const segBtns = (name, cur, list) => `<div class="seg" data-seg="${name}">${list.map(([v, l]) => `<button type="button" data-v="${v}" class="${cur === v ? 'on s-done' : ''}">${l}</button>`).join('')}</div>`;
+  $('#vSide').innerHTML = `
+    <h3>${esc(p.name)}</h3>
+    <div class="meta">${S.vIndex + 1} из ${S.vList.length}${p.w ? ` · ${p.w}×${p.h}` : ''}${ex.datetime ? ` · снято ${esc(ex.datetime)}` : ''}${ex.camera ? ` · ${esc(ex.camera)}` : ''}</div>
+    <div class="blk"><span class="t">Папка (пункт ТЗ)</span><select id="vFolder">${opts}</select>
+      <div class="meta">${it ? (p.confirmed ? '✓ подтверждено' : `разложено автоматически, уверенность ${pct(p.confidence)}`) : 'не нашёл уверенного пункта'}
+      ${it && !p.confirmed ? ' <button class="btn sm" id="vConfirm">Верно ✓</button>' : ''}</div>
+      ${sug ? `<div class="tags" id="vSug">${sug}</div>` : ''}</div>
+    <div class="blk"><span class="t">Качество</span>
+      <div class="qual"><span>Яркость</span><span>${q.brightness != null ? pct(q.brightness) : '—'}</span><span>Контраст</span><span>${q.contrast != null ? pct(q.contrast) : '—'}</span><span>Резкость</span><span>${q.blur != null ? Math.round(q.blur) : '—'}</span></div>
+      ${flags ? `<div class="tags">${flags}</div>` : '<div class="meta">замечаний нет</div>'}</div>
+    <div class="blk"><span class="t">Улучшение</span>${applied ? `<div class="tags">${applied}</div>` : '<div class="meta">не потребовалось</div>'}
+      ${segBtns('enh', enhOv, [['', 'как в проекте'], ['all', 'улучшить'], ['off', 'оригинал']])}</div>
+    <div class="blk"><span class="t">Лица</span><div class="meta">${p.faces ? `найдено: ${p.faces}${p.faces_blurred ? ', скрыты' : ', не скрыты'}` : 'лиц не найдено'}</div>
+      ${segBtns('faces', facesOv, [['', 'как в проекте'], ['yes', 'замазать'], ['no', 'не замазывать']])}</div>
+    <label class="chk"><input type="checkbox" id="vReshoot" ${reshootOf(p) ? 'checked' : ''}> Переснять этот кадр</label>
+    ${p.duplicate_of ? `<div class="meta">Похоже на другое фото: <a href="#" id="vDup">открыть оригинал дубля</a></div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:auto">
+      <a class="btn sm" href="${P()}/photos/${id}/original" download>Скачать исходник</a>
+      <a class="btn sm" href="${P()}/photos/${id}/work" download="${esc(p.name.replace(/\.[^.]+$/, ''))}-обработано.jpg">Скачать обработанное</a>
+      <button class="btn sm danger" id="vDel">Удалить</button></div>`;
+  $('#vFolder').addEventListener('change', async e => { await movePhotos([id], e.target.value || null); });
+  const vc = $('#vConfirm'); if (vc) vc.addEventListener('click', () => confirmPhotos([id]));
+  $$('#vSug [data-it]').forEach(b => b.addEventListener('click', () => movePhotos([id], b.dataset.it)));
+  $$('#vSide [data-seg] button').forEach(b => b.addEventListener('click', async () => {
+    const seg = b.parentElement.dataset.seg, v = b.dataset.v;
+    const body = seg === 'enh' ? { enhance_override: v || null } : { faces_override: v === 'yes' ? true : v === 'no' ? false : null };
+    await api('PATCH', `${P()}/photos/${id}`, body); toast('Фото обрабатывается заново…'); refresh();
+  }));
+  $('#vReshoot').addEventListener('change', async e => { await api('PATCH', `${P()}/photos/${id}`, { reshoot: e.target.checked }); refresh(); });
+  const vd = $('#vDup'); if (vd) vd.addEventListener('click', e => { e.preventDefault(); openViewer(p.duplicate_of, [p.duplicate_of, id]); });
+  $('#vDel').addEventListener('click', async () => {
+    if (!confirm('Удалить фото из проекта?')) return;
+    await api('DELETE', `${P()}/photos/${id}`);
+    S.vList.splice(S.vIndex, 1); S.vIndex = Math.min(S.vIndex, S.vList.length - 1);
+    await refresh(); if (S.vList.length) renderViewer(true); else closeViewer();
+  });
+}
+$('#vSplit').addEventListener('input', e => $('#cmp').style.setProperty('--x', e.target.value + '%'));
+$('#vClose').addEventListener('click', closeViewer);
+$('#viewer').addEventListener('click', e => { if (e.target.id === 'viewer') closeViewer(); });
+$('#vPrev').addEventListener('click', () => { if (S.vIndex > 0) { S.vIndex--; renderViewer(true); } });
+$('#vNext').addEventListener('click', () => { if (S.vIndex < S.vList.length - 1) { S.vIndex++; renderViewer(true); } });
+document.addEventListener('keydown', e => {
+  if ($('#viewer').hidden || /input|textarea|select/i.test(document.activeElement.tagName)) return;
+  if (e.key === 'Escape') closeViewer();
+  if (e.key === 'ArrowLeft') $('#vPrev').click();
+  if (e.key === 'ArrowRight') $('#vNext').click();
+});
+
+// ------------------------------------------------------------------ отчёт
+function renderReport() {
+  const items = S.prj.items || [], ph = S.prj.photos || [];
+  const ready = items.filter(i => DONE.has(i.status)).length, need = items.filter(i => i.status !== 'na').length;
+  const noPh = items.filter(i => i.status !== 'na' && !(i.photo_ids || []).length).length;
+  const un = ph.filter(p => !p.item_id).length;
+  $('#kpis').innerHTML = `<div class="kpi done"><div class="v">${ready}/${need}</div><div class="l">пунктов готово</div></div>
+    <div class="kpi"><div class="v">${ph.length - un}</div><div class="l">фото в отчёте</div></div>
+    <div class="kpi ${noPh ? 'warn' : ''}"><div class="v">${noPh}</div><div class="l">пунктов без фото</div></div>
+    <div class="kpi ${un ? 'warn' : ''}"><div class="v">${un}</div><div class="l">неразобранных фото</div></div>`;
+  $('#rtable').innerHTML = items.length ? `<tr><th>№</th><th>Пункт ТЗ</th><th>Статус</th><th style="text-align:right">Фото</th></tr>` + items.map(i => {
+    const n = (i.photo_ids || []).length;
+    return `<tr><td class="n">${esc(i.num || '')}</td><td>${'   '.repeat(Math.min(3, i.level || 1) - 1)}${esc(i.title)}${i.comment ? `<div class="hintline">${esc(i.comment)}</div>` : ''}</td>
+      <td><span class="pill st-${i.status}">${SLABEL[i.status]}${i.done_at && DONE.has(i.status) ? ' · ' + esc(i.done_at) : ''}</span></td><td class="c ${!n && i.status !== 'na' ? 'nophoto' : ''}">${n || '—'}</td></tr>`;
+  }).join('') : `<tr><td>Пунктов нет — загрузите ТЗ.</td></tr>`;
+}
+function exportUrl(fmt) {
+  const q = new URLSearchParams({ photos_per_row: $('#rPer').value, include_unsorted: $('#rUnsorted').checked, only_done: $('#rOnlyDone').checked, which: $('#rWhich').value });
+  return `${P()}/export/${fmt}?${q}`;
+}
+$$('[data-exp]').forEach(b => b.addEventListener('click', async () => {
+  const fmt = b.dataset.exp; b.disabled = true; const old = b.textContent; b.textContent = 'Собираю…';
+  try {
+    const r = await fetch(exportUrl(fmt));
+    if (!r.ok) { let d = null; try { d = await r.json(); } catch (e) { /* */ } toast((d && d.detail) || 'Отчёт не собран', 'err'); return; }
+    const blob = await r.blob();
+    const cd = r.headers.get('content-disposition') || '';
+    let name = `report.${fmt}`;
+    const m = cd.match(/filename\*=UTF-8''([^;]+)/i) || cd.match(/filename="?([^";]+)"?/i);
+    if (m) name = decodeURIComponent(m[1]);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    toast(`Сохранено в «Загрузки»: ${name}`);
+  } finally { b.disabled = false; b.textContent = old; }
+}));
+$('#toFolders').addEventListener('click', async () => {
+  const r = await api('POST', `${P()}/export/folders`, { which: $('#rWhich').value, open: true });
+  const pb = $('#folderPath'); pb.hidden = false; pb.textContent = r.path;
+  toast(`Разложено по ${r.folders.length} папкам`);
+});
+
+// ------------------------------------------------------------------ события
+$('#home').addEventListener('click', goProjects);
+$$('#tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+$('#newPrj').addEventListener('submit', async e => {
+  e.preventDefault();
+  const prj = await api('POST', '/api/projects', { name: $('#npName').value, customer: $('#npCust').value });
+  $('#npName').value = $('#npCust').value = '';
+  openProject(prj.id, 'tz');
+});
+$('#pgrid').addEventListener('click', async e => {
+  const del = e.target.closest('[data-del]');
+  if (del) {
+    e.stopPropagation();
+    if (!confirm('Удалить проект вместе со всеми фото? Это нельзя отменить.')) return;
+    await api('DELETE', `/api/projects/${del.dataset.del}`); goProjects(); return;
+  }
+  const c = e.target.closest('.pcard'); if (c) openProject(c.dataset.id);
+});
+$('#tzInput').addEventListener('change', e => { uploadTz(e.target.files[0]); e.target.value = ''; });
+$('#tzInput2').addEventListener('change', e => { uploadTz(e.target.files[0]); e.target.value = ''; });
+$('#tzReplace').addEventListener('change', e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (f && confirm('Заменить ТЗ? Статусы, комментарии и фото сохранятся у пунктов с тем же номером и названием.')) uploadTz(f);
+});
+const tzDrop = $('#tzDrop');
+tzDrop.addEventListener('dragover', e => { e.preventDefault(); tzDrop.classList.add('over'); });
+tzDrop.addEventListener('dragleave', () => tzDrop.classList.remove('over'));
+tzDrop.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); tzDrop.classList.remove('over'); $('#dropOverlay').hidden = true; dragDepth = 0; uploadTz(e.dataTransfer.files[0]); });
+async function addItemManual() {
+  const r = await api('POST', `${P()}/items`, { title: 'Новый пункт', num: String((S.prj.items || []).length + 1) });
+  S.prj = r.project; renderData();
+  const ne = $(`#items .item[data-id="${r.item.id}"]`); if (ne) { toggleEdit(ne, r.item.id); ne.scrollIntoView({ block: 'center' }); }
+}
+$('#addItem').addEventListener('click', addItemManual);
+$('#addFirst').addEventListener('click', addItemManual);
+$('#filters').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (b) { S.filter = b.dataset.f; renderTz(); } });
+$('#phInput').addEventListener('change', e => { uploadPhotos([...e.target.files], null); e.target.value = ''; });
+async function saveSettings(patch) {
+  const settings = Object.assign({}, S.prj.settings, patch);
+  const n = (S.prj.photos || []).length;
+  S.prj = await api('PATCH', P(), { settings });
+  if (n) toast('Настройка применяется ко всем фото — обрабатываю заново (исходники не меняются)');
+  renderData();
+}
+$('#optEnh').addEventListener('change', e => saveSettings({ enhance: e.target.value }));
+$('#optFaces').addEventListener('change', e => saveSettings({ blur_faces: e.target.checked }));
+$('#optFaceMode').addEventListener('change', e => saveSettings({ face_mode: e.target.value }));
+$('#btnReclass').addEventListener('click', async () => {
+  const r = await api('POST', `${P()}/classify`, {});
+  toast(r.skipped || 'Раскладываю заново (подтверждённые вручную фото остаются на месте)');
+});
+$('#banner').addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  if (b.dataset.act === 'model') { S.model = await api('POST', '/api/model/download'); renderStatus(); }
+  if (b.dataset.act === 'totz') setTab('tz');
+});
+$('#selAll').addEventListener('click', () => { photosIn(S.folder).forEach(p => S.sel.add(p.id)); renderPhotos(); });
+$('#selClear').addEventListener('click', () => { S.sel.clear(); renderPhotos(); });
+$('#selMove').addEventListener('change', async e => {
+  const v = e.target.value; if (!v) return;
+  const ids = [...S.sel]; S.sel.clear(); await movePhotos(ids, v === '__unsorted' ? null : v);
+});
+$('#selConfirm').addEventListener('click', async () => { const ids = [...S.sel]; S.sel.clear(); await confirmPhotos(ids); });
+$('#selDelete').addEventListener('click', async () => {
+  if (!confirm(`Удалить выбранные фото (${S.sel.size})?`)) return;
+  const ids = [...S.sel]; S.sel.clear();
+  S.prj = await api('POST', `${P()}/photos/bulk`, { action: 'delete', photo_ids: ids }); renderData();
+});
+
+// ------------------------------------------------------------------ старт
+(function start() {
+  const m = location.hash.match(/^#(p\d{8}-[0-9a-f]+)(?:\/(tz|photos|report))?/);
+  if (m) openProject(m[1], m[2]); else goProjects();
+  tick();
+})();
+</script>
+</body>
+</html>
