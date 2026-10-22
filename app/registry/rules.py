@@ -189,5 +189,5 @@ def analyze(items: list[dict], with_equipment: bool = False) -> dict:
                 break
     summary = {"analyzed": f"{len(items)} пунктов и подпунктов ТЗ; в реестре {len(rows)}, на уточнение {len(clarify)}",
                "sections": sections,
-               "issues": "Реестр составлен по правилам, без ИИ: проверьте строки и поправьте «Что приложить»."}
+               "issues": ""}                       # «проверьте строки» — в строке статуса реестра
     return {"rows": rows, "clarify": clarify, "summary": summary, "model": "правила", "usage": {}}
