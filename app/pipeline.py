@@ -467,8 +467,14 @@ def mark_duplicates(pid: str, max_dist: int = 6) -> int:
         hashes = [int(p["dhash"], 16) for p in photos]
         for p in prj.get("photos", []):
             p["duplicate_of"] = None
+        # эмбеддинги CLIP ловят и серии кадров со сдвигом камеры, где dHash уже расходится
+        ids, mat = EMB.get(pid)
+        index = {x: i for i, x in enumerate(ids)}
+        embs = None
+        if mat.size and all(p["id"] in index for p in photos):
+            embs = mat[[index[p["id"]] for p in photos]]
         n = 0
-        for grp in v.dedup.groups(hashes, max_dist=max_dist):
+        for grp in v.dedup.groups(hashes, max_dist=max_dist, embs=embs):
             if len(grp) < 2:
                 continue
             blur = [float((photos[i].get("quality") or {}).get("blur") or 0) for i in grp]
