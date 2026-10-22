@@ -264,6 +264,31 @@ label.slot:hover { background: var(--accent-soft); }
 .folder:hover .fx { visibility: visible; }
 .folder .fx:hover { color: var(--accent); }
 .newfold { margin: 8px 10px; }
+.tabs .stepn { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--line); color: var(--muted); font-size: 11px; margin-right: 6px; }
+.tabs button.on .stepn { background: var(--accent); color: var(--accent-ink); }
+.chkbar { display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+.docpage { max-width: 900px; margin: 18px auto 60px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 28px 36px; }
+.docpage .dtitle { margin-bottom: 18px; }
+.ck { padding: 12px 0; border-top: 1px solid var(--line-2); }
+.ck.l2 { margin-left: 18px; } .ck.l3 { margin-left: 36px; }
+.ck.sec .ckt { font-size: 15px; font-weight: 700; }
+.ckh { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ckh .num { font-family: ui-monospace, Menlo, monospace; color: var(--muted); font-size: 12px; }
+.ckt { font-weight: 600; flex: 1; min-width: 200px; }
+.ckx { color: var(--ink); font-size: 13px; margin: 6px 0 0; white-space: pre-wrap; }
+.ckc { color: var(--accent); font-size: 12.5px; margin-top: 4px; }
+.ckp { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+.ckp img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px; cursor: zoom-in; background: var(--panel-2); }
+.ckempty { margin-top: 8px; border: 1px dashed #d9a441; color: #8a5a00; background: #fff8e8; border-radius: 6px; padding: 8px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.fmts { display: grid; gap: 6px; margin: 4px 0 10px; }
+.fmt { display: grid; grid-template-columns: 18px 1fr; column-gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.fmt input { grid-row: span 2; margin-top: 3px; }
+.fmt span { color: var(--muted); font-size: 12px; }
+.fmt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.rleft { display: grid; gap: 18px; align-content: start; min-width: 0; }
+.row2b { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pages { display: grid; gap: 10px; max-height: 70vh; overflow: auto; padding: 4px; }
+.pages img { width: 100%; border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .ptools .inlineask { width: 420px; max-width: 60vw; margin: 0; }
 .inlineask { width: calc(100% - 16px); margin: 4px 8px; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 7px; font: inherit; font-size: 13px; }
 .pfsw button { font-size: 12px; }
@@ -380,9 +405,10 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
   <div class="brand" id="home" title="Все проекты"><img src="/favicon.svg" alt="">ФотоОтчёт</div>
   <div class="crumb" id="crumb" hidden><span>/</span><b id="prjName"></b></div>
   <nav class="tabs" id="tabs" hidden>
-    <button data-tab="tz">ТЗ и исполнение</button>
-    <button data-tab="photos">Фото<span class="cnt" id="unsortedCnt" hidden></span></button>
-    <button data-tab="report">Отчёт</button>
+    <button data-tab="tz"><b class="stepn">1</b>ТЗ</button>
+    <button data-tab="photos"><b class="stepn">2</b>Фото<span class="cnt" id="unsortedCnt" hidden></span></button>
+    <button data-tab="check"><b class="stepn">3</b>Проверка</button>
+    <button data-tab="report"><b class="stepn">4</b>Документ</button>
   </nav>
   <span class="spacer"></span>
   <span class="chip" id="jobChip" hidden><span class="dot"></span><span class="t"></span></span>
@@ -491,24 +517,47 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
   </section>
 
   <!-- ======================= Отчёт -->
+  <section class="view" id="viewCheck" hidden>
+    <div class="chkbar">
+      <div class="views" id="chkFilter"><button data-cf="all">Все пункты</button><button data-cf="ph">С фото</button><button data-cf="noph">Без фото</button></div>
+      <span class="hintline" id="chkInfo"></span>
+      <span class="spacer"></span>
+      <button class="btn" data-go="photos">← Фото</button>
+      <button class="btn primary" data-go="report">Дальше: документ →</button>
+    </div>
+    <div class="docpage" id="chkDoc"></div>
+  </section>
+
   <section class="view" id="viewReport" hidden>
     <div class="rwrap">
+      <div class="rleft">
+      <div class="box" id="prevBox" hidden>
+        <h2>Предпросмотр</h2>
+        <div class="hintline" id="prevNote"></div>
+        <div class="pages" id="prevPages"></div>
+      </div>
       <div class="box">
         <h2>Состав отчёта</h2>
         <div class="kpis" id="kpis"></div>
         <div style="overflow-x:auto"><table class="rt" id="rtable"></table></div>
       </div>
+      </div>
       <div class="box exp">
-        <h2>Выгрузить</h2>
+        <h2>Документ</h2>
+        <div class="fmts" id="fmts">
+          <label class="fmt" id="fmtTz"><input type="radio" name="fmt" value="tzdocx"><b>ТЗ с фото</b><span>Word заказчика: текст в совершенном виде, фото под пунктами</span></label>
+          <label class="fmt"><input type="radio" name="fmt" value="docx"><b>Word</b><span>отчёт: титул, таблица исполнения, пункты с фото</span></label>
+          <label class="fmt"><input type="radio" name="fmt" value="pdf"><b>PDF</b><span>тот же отчёт для отправки и печати</span></label>
+          <label class="fmt"><input type="radio" name="fmt" value="xlsx"><b>Excel</b><span>таблица исполнения и список фото</span></label>
+          <label class="fmt"><input type="radio" name="fmt" value="pptx"><b>PowerPoint</b><span>пункт — слайд с фото</span></label>
+        </div>
+        <label class="chk"><input type="checkbox" id="rPerfect" checked> Текст в совершенном виде («обеспечил», «предоставил»)</label>
         <div class="row"><span>Фото в ряд</span><select id="rPer"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></div>
         <label class="chk"><input type="checkbox" id="rOnlyDone"> Только выполненные пункты</label>
         <label class="chk"><input type="checkbox" id="rUnsorted"> Добавить неразобранные фото</label>
-        <button class="btn big" data-exp="registry" id="expRegistry" hidden>Реестр подтверждений (Excel)</button>
-        <button class="btn primary big" data-exp="tzdocx" id="expTz" title="Исходный файл ТЗ: под пунктами — отметка исполнения, фото, файлы и ссылки">ТЗ с фото (Word)</button>
-        <button class="btn big" data-exp="docx">Отчёт Word (.docx)</button>
-        <button class="btn big" data-exp="pdf">Отчёт PDF</button>
-        <button class="btn big" data-exp="xlsx">Таблица Excel</button>
+        <div class="row2b"><button class="btn big" id="btnPreview">Предпросмотр</button><button class="btn primary big" id="btnDownload">Скачать</button></div>
         <hr>
+        <button class="btn big" data-exp="registry" id="expRegistry" hidden>Реестр подтверждений (Excel)</button>
         <div class="row"><span>Фото в папках</span><select id="rWhich"><option value="work">обработанные</option><option value="original">оригиналы</option></select></div>
         <button class="btn big" data-exp="zip">ZIP-архив по папкам</button>
         <button class="btn big" id="toFolders">Разложить по папкам на диске</button>
@@ -631,7 +680,7 @@ const reshootOf = p => (p.reshoot === true || p.reshoot === false) ? p.reshoot :
 // ------------------------------------------------------------------ навигация
 function setHash() { const h = S.pid ? `#${S.pid}/${S.tab}` : '#'; if (location.hash !== h) history.replaceState(null, '', h); }
 function show(view) {
-  for (const v of ['viewProjects', 'viewTz', 'viewPhotos', 'viewReport']) $('#' + v).hidden = v !== view;
+  for (const v of ['viewProjects', 'viewTz', 'viewPhotos', 'viewCheck', 'viewReport']) $('#' + v).hidden = v !== view;
   $('#tabs').hidden = $('#crumb').hidden = view === 'viewProjects';
 }
 async function goProjects() {
@@ -670,7 +719,7 @@ function renderAll() {
   setHash();
   $('#prjName').textContent = S.prj.name + (S.prj.customer ? ` · ${S.prj.customer}` : '');
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
-  show({ tz: 'viewTz', photos: 'viewPhotos', report: 'viewReport' }[S.tab]);
+  show({ tz: 'viewTz', photos: 'viewPhotos', check: 'viewCheck', report: 'viewReport' }[S.tab]);
   renderData();
 }
 function renderData() {
@@ -678,6 +727,7 @@ function renderData() {
   const c = $('#unsortedCnt'); c.hidden = !un || !(S.prj.items || []).length; c.textContent = un;
   if (S.tab === 'tz') renderTz();
   else if (S.tab === 'photos') renderPhotos();
+  else if (S.tab === 'check') renderCheck();
   else renderReport();
   if (!$('#viewer').hidden) renderViewer();
 }
@@ -1400,9 +1450,12 @@ document.addEventListener('keydown', e => {
 });
 
 // ------------------------------------------------------------------ отчёт
+function curFmt() { const r = $('#fmts input:checked'); return r ? r.value : 'pdf'; }
 function renderReport() {
   $('#expRegistry').hidden = !hasReg();
-  $('#expTz').hidden = (S.prj.tz || {}).kind !== 'docx';
+  const word = (S.prj.tz || {}).kind === 'docx';
+  $('#fmtTz').hidden = !word;
+  if (!$('#fmts input:checked') || (!word && curFmt() === 'tzdocx')) $(`#fmts input[value="${word ? 'tzdocx' : 'pdf'}"]`).checked = true;
   const items = S.prj.items || [], ph = S.prj.photos || [];
   const ready = items.filter(i => DONE.has(i.status)).length, need = items.filter(i => i.status !== 'na').length;
   const noPh = items.filter(i => i.status !== 'na' && !(i.photo_ids || []).length).length;
@@ -1413,16 +1466,31 @@ function renderReport() {
     <div class="kpi ${un ? 'warn' : ''}"><div class="v">${un}</div><div class="l">неразобранных фото</div></div>`;
   $('#rtable').innerHTML = items.length ? `<tr><th>№</th><th>Пункт ТЗ</th><th>Статус</th><th style="text-align:right">Фото</th></tr>` + items.map(i => {
     const n = (i.photo_ids || []).length;
-    return `<tr><td class="n">${esc(i.num || '')}</td><td>${'   '.repeat(Math.min(3, i.level || 1) - 1)}${esc(i.title)}${i.comment ? `<div class="hintline">${esc(i.comment)}</div>` : ''}</td>
+    return `<tr><td class="n">${esc(i.num || '')}</td><td>${'   '.repeat(Math.min(3, i.level || 1) - 1)}${esc(i.pf_title || i.title)}${i.comment ? `<div class="hintline">${esc(i.comment)}</div>` : ''}</td>
       <td><span class="pill st-${i.status}">${SLABEL[i.status]}${i.done_at && DONE.has(i.status) ? ' · ' + esc(i.done_at) : ''}</span></td><td class="c ${!n && i.status !== 'na' ? 'nophoto' : ''}">${n || '—'}</td></tr>`;
   }).join('') : `<tr><td>Пунктов нет — загрузите ТЗ.</td></tr>`;
 }
-function exportUrl(fmt) {
-  const q = new URLSearchParams({ photos_per_row: $('#rPer').value, include_unsorted: $('#rUnsorted').checked, only_done: $('#rOnlyDone').checked, which: $('#rWhich').value });
-  return `${P()}/export/${fmt}?${q}`;
+function exportQuery() {
+  return new URLSearchParams({ photos_per_row: $('#rPer').value, include_unsorted: $('#rUnsorted').checked, only_done: $('#rOnlyDone').checked, which: $('#rWhich').value, perfect: $('#rPerfect').checked });
 }
-$$('[data-exp]').forEach(b => b.addEventListener('click', async () => {
-  const fmt = b.dataset.exp; b.disabled = true; const old = b.textContent; b.textContent = 'Собираю…';
+function exportUrl(fmt) { return `${P()}/export/${fmt}?${exportQuery()}`; }
+$('#fmts').addEventListener('change', () => { $('#prevBox').hidden = true; });
+$('#btnPreview').addEventListener('click', async e => {
+  const b = e.currentTarget, old = b.textContent; b.disabled = true; b.textContent = 'Собираю…';
+  try {
+    const r = await api('GET', `${P()}/preview/${curFmt()}?${exportQuery()}`);
+    $('#prevBox').hidden = false;
+    $('#prevNote').textContent = r.note || (r.pages.length ? `Первые страницы: ${r.pages.length}` : '');
+    $('#prevPages').innerHTML = r.pages.map(u => `<img src="${u}" loading="lazy" alt="">`).join('') ||
+      (curFmt() === 'tzdocx' ? '<button class="btn" data-go="check">Открыть шаг «Проверка»</button>' : '');
+    $('#prevBox').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  } finally { b.disabled = false; b.textContent = old; }
+});
+$('#btnDownload').addEventListener('click', e => downloadDoc(curFmt(), e.currentTarget));
+$$('[data-exp]').forEach(b => b.addEventListener('click', () => downloadDoc(b.dataset.exp, b)));
+document.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) setTab(g.dataset.go); });
+async function downloadDoc(fmt, b) {
+  b.disabled = true; const old = b.textContent; b.textContent = 'Собираю…';
   try {
     const r = await fetch(exportUrl(fmt));
     if (!r.ok) { let d = null; try { d = await r.json(); } catch (e) { /* */ } toast((d && d.detail) || 'Отчёт не собран', 'err'); return; }
@@ -1435,7 +1503,39 @@ $$('[data-exp]').forEach(b => b.addEventListener('click', async () => {
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
     toast(`Сохранено в «Загрузки»: ${name}`);
   } finally { b.disabled = false; b.textContent = old; }
-}));
+}
+
+// ------------------------------------------------------------------ шаг 3: проверка — ТЗ с фото по пунктам
+let CF = 'all';
+$('#chkFilter').addEventListener('click', e => { const b = e.target.closest('[data-cf]'); if (b) { CF = b.dataset.cf; renderCheck(); } });
+function renderCheck() {
+  $$('#chkFilter button').forEach(b => b.classList.toggle('on', b.dataset.cf === CF));
+  const items = S.prj.items || [];
+  const isSec = it => (it.level || 1) === 1 && items.some(x => (x.level || 1) > 1) && !it.text && !(it.photo_ids || []).length;
+  const withPh = items.filter(it => (it.photo_ids || []).length).length;
+  const need = items.filter(it => !isSec(it) && it.status !== 'na');
+  $('#chkInfo').textContent = `пунктов с фото: ${withPh} из ${need.length}`;
+  const list = items.filter(it => CF === 'all' || (CF === 'ph' ? (it.photo_ids || []).length : !isSec(it) && it.status !== 'na' && !(it.photo_ids || []).length));
+  const title = (S.prj.tz || {}).title || S.prj.name;
+  $('#chkDoc').innerHTML = `<div class="dtitle"><div class="kicker">Отчёт об исполнении</div><h1>${esc(title)}</h1><div class="sub">${esc(S.prj.name)}${S.prj.customer ? ' · ' + esc(S.prj.customer) : ''}</div></div>` +
+    (list.length ? list.map(it => {
+      const ph = (it.photo_ids || []).map(photoById).filter(Boolean);
+      const tt = (it.pf_title || it.title || ''), tx = (it.pf_text || it.text || '');
+      const showTx = tx && tx.trim() !== tt.trim();
+      return `<div class="ck l${Math.min(3, it.level || 1)}${isSec(it) ? ' sec' : ''}">
+        <div class="ckh"><span class="num">${esc(it.num || '')}</span><span class="ckt">${esc(tt)}</span>${isSec(it) ? '' : `<span class="pill st-${it.status}">${SLABEL[it.status]}${it.done_at && DONE.has(it.status) ? ' · ' + esc(it.done_at) : ''}</span>`}</div>
+        ${showTx ? `<div class="ckx">${esc(tx)}</div>` : ''}${it.comment ? `<div class="ckc">${esc(it.comment)}</div>` : ''}
+        ${ph.length ? `<div class="ckp">${ph.map(p => `<img src="${thumbUrl(p)}" data-ck="${p.id}" data-it="${it.id}" loading="lazy" alt="">`).join('')}</div>`
+          : isSec(it) || it.status === 'na' ? '' : `<button class="ckempty" data-ckfolder="${it.id}">Нет фото — добавить в папку «${esc(folderLabel(it))}»</button>`}
+      </div>`;
+    }).join('') : '<div class="empty">Нет пунктов по фильтру.</div>');
+}
+$('#chkDoc').addEventListener('click', e => {
+  const im = e.target.closest('[data-ck]');
+  if (im) { const it = itemById(im.dataset.it); openViewer(im.dataset.ck, (it.photo_ids || [])); return; }
+  const f = e.target.closest('[data-ckfolder]');
+  if (f) { S.folder = f.dataset.ckfolder; setTab('photos'); }
+});
 $('#toFolders').addEventListener('click', async () => {
   const r = await api('POST', `${P()}/export/folders`, { which: $('#rWhich').value, open: true });
   const pb = $('#folderPath'); pb.hidden = false; pb.textContent = r.path;
@@ -1550,7 +1650,7 @@ $('#aiKey').addEventListener('keydown', e => { if (e.key === 'Enter') $('#aiSave
 
 // ------------------------------------------------------------------ старт
 function route() {
-  const m = location.hash.match(/^#(p\d{8}-[0-9a-f]+)(?:\/(tz|photos|report))?/);
+  const m = location.hash.match(/^#(p\d{8}-[0-9a-f]+)(?:\/(tz|photos|check|report))?/);
   if (m && m[1] === S.pid) { if (m[2] && m[2] !== S.tab) setTab(m[2]); return; }
   if (m) openProject(m[1], m[2]); else if (S.pid || $('#viewProjects').hidden) goProjects();
 }

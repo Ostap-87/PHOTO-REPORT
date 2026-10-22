@@ -759,6 +759,8 @@ def export(pid: str, fmt: str, which: str = Query("work"), photos_per_row: int =
             ex.export_xlsx(prj, d, out)
         elif fmt == "zip":
             ex.export_zip(prj, d, out, "original" if which == "original" else "work")
+        elif fmt == "pptx":
+            ex.export_pptx(prj, d, out, options)
         elif fmt == "tzdocx":
             out = os.path.join(outdir, "tz-with-photos.docx")
             name = _report_name(prj, "docx").replace(".docx", " — ТЗ с фото.docx")
@@ -778,6 +780,71 @@ def export(pid: str, fmt: str, which: str = Query("work"), photos_per_row: int =
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(500, f"Отчёт не собран: {exc}") from exc
     return FileResponse(out, filename=name)
+
+
+@app.get("/api/projects/{pid}/preview/{fmt}")
+def preview(pid: str, fmt: str, photos_per_row: int = Query(2), include_unsorted: bool = Query(False),
+            only_done: bool = Query(False), perfect: bool = Query(True)):
+    """Предпросмотр документа картинками страниц: PowerPoint — слайды по той же раскладке; Word, PDF и
+    Excel — страницы PDF-версии отчёта (тот же состав и порядок); «ТЗ с фото» — PDF, если на компьютере
+    есть LibreOffice, иначе подсказка смотреть шаг «Проверка»."""
+    prj = _load(pid)
+    from app import export as ex
+    d = store.project_dir(pid)
+    out_dir = os.path.join(d, "exports", "preview", fmt)
+    shutil.rmtree(out_dir, ignore_errors=True)
+    os.makedirs(out_dir, exist_ok=True)
+    options = {"photos_per_row": max(1, min(4, photos_per_row)), "include_unsorted": include_unsorted,
+               "only_status": sorted(DONE_STATUSES) if only_done else None, "perfect": perfect}
+    note = ""
+    try:
+        if fmt == "pptx":
+            pages = ex.render_pptx_preview(prj, d, out_dir, options)
+        else:
+            pdf = os.path.join(out_dir, "doc.pdf")
+            if fmt == "tzdocx":
+                docx = os.path.join(out_dir, "doc.docx")
+                ex.export_tz_docx(prj, d, docx, options)
+                soffice = shutil.which("soffice") or ("/Applications/LibreOffice.app/Contents/MacOS/soffice"
+                                                      if os.path.exists("/Applications/LibreOffice.app") else None)
+                if not soffice:
+                    return {"pages": [], "note": "Предпросмотр «ТЗ с фото» — на шаге «Проверка»: там ТЗ с фото "
+                                                 "по пунктам. Сам документ — исходный Word заказчика."}
+                subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", out_dir, docx],
+                               capture_output=True, timeout=180)
+            else:
+                ex.export_pdf(prj, d, pdf, options)
+                if fmt in ("docx", "xlsx"):
+                    note = "Содержание и порядок — как в файле; оформление " + ("Word" if fmt == "docx" else "Excel") + " своё."
+            import pymupdf
+            pages = []
+            with pymupdf.open(pdf) as doc:
+                for i, page in enumerate(doc):
+                    if i >= 12:
+                        break
+                    path = os.path.join(out_dir, f"page-{i + 1:02d}.png")
+                    page.get_pixmap(dpi=70).save(path)
+                    pages.append(path)
+    except ex.NotWordTZ as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"Предпросмотр не собран: {exc}") from exc
+    stamp = int(time.time())
+    return {"pages": [f"/api/projects/{pid}/preview-img/{fmt}/{os.path.basename(p)}?t={stamp}" for p in pages],
+            "note": note}
+
+
+@app.get("/api/projects/{pid}/preview-img/{fmt}/{name}")
+def preview_img(pid: str, fmt: str, name: str):
+    _load(pid)
+    if not re.fullmatch(r"[\w.-]+\.png", name) or not re.fullmatch(r"\w+", fmt):
+        raise HTTPException(404, "нет такой картинки")
+    path = os.path.join(store.project_dir(pid), "exports", "preview", fmt, name)
+    if not os.path.isfile(path):
+        raise HTTPException(404, "нет такой картинки")
+    return FileResponse(path, media_type="image/png")
 
 
 @app.post("/api/projects/{pid}/export/folders")

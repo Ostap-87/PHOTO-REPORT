@@ -195,3 +195,30 @@ def test_gdrive_folder_page_parsing():
     assert sources.kind_of("https://drive.google.com/drive/folders/xyz") == "gdrive"
     with pytest.raises(sources.SourceError):
         sources.download("ftp://example.org/x", str("/tmp"))
+
+
+def test_pptx_export_and_preview(client):
+    from pptx import Presentation
+    pid = client.post("/api/projects", json={"name": "Слайды"}).json()["id"]
+    client.post(f"/api/projects/{pid}/tz", files={"file": ("tz_forum_table.docx", _sample("tz_forum_table.docx"))})
+    prj = client.get(f"/api/projects/{pid}").json()
+    it = next(x for x in prj["items"] if x["title"].startswith("Исполнитель обеспечивает площадку"))
+    client.post(f"/api/projects/{pid}/photos", files=[("files", (f"{i}.jpg", _jpeg((40 + i * 20, 90, 160))))
+                                                       for i in range(8)])
+    prj = _wait_photos(client, pid, 8)
+    for ph in prj["photos"]:
+        client.patch(f"/api/projects/{pid}/photos/{ph['id']}", json={"item_id": it["id"]})
+    client.patch(f"/api/projects/{pid}/items/{it['id']}", json={"status": "done"})
+    r = client.get(f"/api/projects/{pid}/export/pptx")
+    assert r.status_code == 200
+    prs = Presentation(io.BytesIO(r.content))
+    slides = list(prs.slides)
+    assert len(slides) == 3                                  # титул + 6 фото + «продолжение» с 2 фото
+    texts = [" ".join(sh.text_frame.text for sh in s.shapes if sh.has_text_frame) for s in slides]
+    assert "Исполнитель обеспечил площадку" in texts[1] and "(продолжение)" in texts[2]
+    assert sum(1 for sh in slides[1].shapes if sh.shape_type == 13) == 6
+    pv = client.get(f"/api/projects/{pid}/preview/pptx").json()
+    assert len(pv["pages"]) == 3 and client.get(pv["pages"][1].split("?")[0]).status_code == 200
+    pv = client.get(f"/api/projects/{pid}/preview/pdf").json()
+    assert pv["pages"] and client.get(pv["pages"][0].split("?")[0]).headers["content-type"] == "image/png"
+    assert client.get(f"/api/projects/{pid}/preview-img/pdf/..%2Fproject.json").status_code == 404
