@@ -50,7 +50,15 @@
    bash ~/Documents/PHOTO-REPORT-main/install_mac.command
    ```
    Это займёт несколько минут.
-4. Откройте приложение **«ФотоОтчёт»** из Launchpad или Finder → «Программы». Чтобы держать его под рукой, перетащите в Dock.
+4. Откройте **«ФотоОтчёт»** значком на рабочем столе (или из Launchpad / Finder → «Программы»). Чтобы держать
+   под рукой, перетащите в Dock.
+
+Обновить уже установленный ФотоОтчёт (проекты и библиотеки сохраняются):
+
+```bash
+cd ~/Documents/PHOTO-REPORT-main && curl -fsSL https://codeload.github.com/Ostap-87/PHOTO-REPORT/tar.gz/refs/heads/main \
+  | tar -xzf - --strip-components=1 && bash install_mac.command
+```
 
 При первом запуске приложение само скачает модель распознавания (~230 МБ, один раз, в `~/.cache/photo-report/models`).
 Проекты хранятся в `~/Documents/ФотоОтчёт/Проекты`. Папку с приложением после установки не переносите.

@@ -3,7 +3,8 @@
 #  ФотоОтчёт — установка на Mac (macOS 11+, Apple Silicon или Intel)
 #  Запуск: двойной клик по файлу или в Терминале: bash install_mac.command
 #  Что делает: проверяет Python 3.11+, ставит зависимости в папку .venv,
-#  создаёт приложение «ФотоОтчёт» в ~/Applications (Launchpad / Finder / Dock).
+#  создаёт приложение «ФотоОтчёт» в ~/Applications и значок на рабочем столе.
+#  Повторный запуск обновляет установку.
 #  Модель распознавания (~230 МБ) скачается сама при первом запуске.
 # ============================================================
 set -e
@@ -58,6 +59,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>PhotoReport</string>
+  <key>CFBundleIconFile</key><string>PhotoReport</string>
   <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
@@ -68,10 +70,16 @@ cd "$APP_DIR"
 exec "$APP_DIR/.venv/bin/python" "$APP_DIR/photo_gui.py" >> "\$HOME/Library/Logs/PhotoReport.log" 2>&1
 LAUNCH
 chmod +x "$APP/Contents/MacOS/PhotoReport"
+cp "$APP_DIR/assets/PhotoReport.icns" "$APP/Contents/Resources/PhotoReport.icns"
 touch "$APP"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" 2>/dev/null || true
+# значок на рабочем столе (ссылка на приложение)
+ln -sfn "$APP" "$HOME/Desktop/ФотоОтчёт"
+# если ФотоОтчёт уже открыт — закрываем, чтобы запустился обновлённый
+pkill -f "$APP_DIR/photo_gui.py" 2>/dev/null || true
 
 echo
-echo "ГОТОВО. Приложение «ФотоОтчёт» лежит в папке «Программы» вашего пользователя (~/Applications):"
-echo "откройте его из Finder или Launchpad; чтобы держать под рукой — перетащите в Dock."
+echo "ГОТОВО. Значок «ФотоОтчёт» — на рабочем столе; само приложение — в папке «Программы» вашего"
+echo "пользователя (~/Applications). Чтобы держать под рукой, перетащите значок в Dock."
 echo "Проекты хранятся в ~/Documents/ФотоОтчёт. Не переносите папку $APP_DIR — приложение запускается из неё."
 open "$APP"
