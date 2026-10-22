@@ -11,7 +11,7 @@ import datetime as _dt
 import io
 import os
 
-from .common import (STATUS_COLORS, STATUS_LABELS, STATUS_TINTS, ImageCache, PhotoIndex, file_label, fmt_date,
+from .common import (text_of, title_of, STATUS_COLORS, STATUS_LABELS, STATUS_TINTS, ImageCache, PhotoIndex, file_label, fmt_date,
                      is_web_link, item_extra, item_label, norm_options, only_status_text, period_text,
                      photo_caption, qty_text, same_text, section_info, select_items, status_key, summary)
 
@@ -202,7 +202,7 @@ def export_pdf(project: dict, project_dir: str, out_path: str, options: dict | N
         if sec is not None:
             level = int(it.get("level") or 1)
             data.append([Paragraph(_x(it.get("num") or ""), cell_b),
-                         Paragraph(_x(it.get("title") or ""), ParagraphStyle(
+                         Paragraph(_x(title_of(it)), ParagraphStyle(
                              f"sec{level}", parent=cell_b, leftIndent=3.5 * mm * (level - 1))),
                          "", Paragraph(f"готово {sec[0]} из {sec[1]}" if sec[1] else "", small), "",
                          Paragraph("—", center)])
@@ -214,7 +214,7 @@ def export_pdf(project: dict, project_dir: str, out_path: str, options: dict | N
         n = len(idx.for_item(it))
         nf = len(idx.files_for(it))
         shown = (f"{n} + {nf} ф." if nf else str(n)) if (n or nf) else "—"
-        data.append([Paragraph(_x(it.get("num") or ""), st), Paragraph(_x(it.get("title") or it.get("text") or ""), indent),
+        data.append([Paragraph(_x(it.get("num") or ""), st), Paragraph(_x(title_of(it) or text_of(it)), indent),
                      Paragraph(_x(qty_text(it)), cell), Paragraph(status_html(key, 7.6), cell),
                      Paragraph(_x(fmt_date(it.get("done_at"))), cell),
                      Paragraph(shown, center)])
@@ -267,8 +267,8 @@ def export_pdf(project: dict, project_dir: str, out_path: str, options: dict | N
         ex = item_extra(it)
         if ex["section"]:
             block.append(Paragraph(f'<font name="{bold}">Раздел:</font> {_x(ex["section"])}', muted))
-        text = (it.get("text") or "").strip()
-        if text and not same_text(text, it.get("title") or ""):
+        text = text_of(it)
+        if text and not same_text(text, title_of(it)):
             block.append(Paragraph(_x(text), muted))
         if ex["required"]:
             box = Table([[Paragraph(f'<font name="{bold}" color="#7A4A00">Что приложить:</font> {_x(ex["required"])}',

@@ -15,7 +15,7 @@ from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
-from .common import (STATUS_COLORS, STATUS_LABELS, STATUS_TINTS, ImageCache, PhotoIndex, file_label, fmt_date,
+from .common import (text_of, title_of, STATUS_COLORS, STATUS_LABELS, STATUS_TINTS, ImageCache, PhotoIndex, file_label, fmt_date,
                      is_web_link, item_extra, item_label, norm_options, only_status_text, period_text,
                      photo_caption, qty_text, same_text, section_info, select_items, status_key, summary)
 
@@ -253,7 +253,7 @@ def _exec_table(doc, items: list[dict], idx: PhotoIndex, sections: dict) -> None
             _run(cells[0].paragraphs[0], it.get("num") or "", size=9, bold=True)
             p = cells[1].paragraphs[0]
             p.paragraph_format.left_indent = Cm(0.35 * (level - 1))
-            _run(p, it.get("title") or "", size=9, bold=True)
+            _run(p, title_of(it), size=9, bold=True)
             if sec[1]:
                 _run(cells[3].paragraphs[0], f"готово {sec[0]} из {sec[1]}", size=8, color="5F6368")
             _run(cells[5].paragraphs[0], "—", size=9)
@@ -264,7 +264,7 @@ def _exec_table(doc, items: list[dict], idx: PhotoIndex, sections: dict) -> None
         _run(cells[0].paragraphs[0], it.get("num") or "", size=9, bold=(level == 1))
         p = cells[1].paragraphs[0]
         p.paragraph_format.left_indent = Cm(0.35 * (level - 1))
-        _run(p, it.get("title") or it.get("text") or "", size=9, bold=(level == 1))
+        _run(p, title_of(it) or text_of(it), size=9, bold=(level == 1))
         _run(cells[2].paragraphs[0], qty_text(it), size=9)
         _run(cells[3].paragraphs[0], STATUS_LABELS[key], size=9, bold=True, color=STATUS_COLORS[key])
         _shade(cells[3], STATUS_TINTS[key])
@@ -380,8 +380,8 @@ def _item_block(doc, items: list[dict], i: int, idx: PhotoIndex, cache: ImageCac
         return
     if ex["section"]:
         _label_para(doc, "Раздел", ex["section"], keep_next=True)
-    text = (it.get("text") or "").strip()
-    if text and not same_text(text, it.get("title") or ""):
+    text = text_of(it)
+    if text and not same_text(text, title_of(it)):
         _para(doc, text, size=9, color="3C4043", space_after=3, keep_next=True)
     if ex["required"]:
         p = _para(doc, "", space_after=4, keep_next=True)

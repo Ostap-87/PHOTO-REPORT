@@ -179,10 +179,11 @@ class Job:
         self.lock = threading.Lock()
         self.active = 0
         self.error = ""
+        self.importing = False          # идёт импорт из папки или по ссылке (app.server._import_bg)
 
     def as_dict(self) -> dict:
         return {"total": self.total, "done": self.done, "errors": self.errors, "stage": self.stage,
-                "message": self.message, "error": self.error, "running": self.active > 0 or self.stage in ("processing", "classifying", "registry"),
+                "message": self.message, "error": self.error, "running": self.importing or self.active > 0 or self.stage in ("processing", "classifying", "registry"),
                 "elapsed": round(time.time() - self.started, 1) if self.started else 0}
 
 

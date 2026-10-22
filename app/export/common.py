@@ -89,8 +89,17 @@ def same_text(a: str, b: str) -> bool:
     return norm(a) == norm(b)
 
 
+def title_of(item: dict) -> str:
+    """Название пункта для отчёта — «в совершенном виде», если есть."""
+    return (item.get("pf_title") or item.get("title") or "").strip()
+
+
+def text_of(item: dict) -> str:
+    return (item.get("pf_text") or item.get("text") or "").strip()
+
+
 def item_label(item: dict) -> str:
-    return f"{(item.get('num') or '').strip()} {item.get('title') or ''}".strip()
+    return f"{(item.get('num') or '').strip()} {title_of(item)}".strip()
 
 
 # ---------------------------------------------------------------------------

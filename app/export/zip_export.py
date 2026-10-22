@@ -30,7 +30,10 @@ def folder_name(item: dict, index: int | None = None, width: int = 2) -> str:
     без index — «1.2 Расстановка столов».
     """
     num = safe_name(item.get("num") or "", 20, fallback="")
-    title = (item.get("title") or item.get("text") or "").strip() or "Пункт"
+    if (item.get("folder") or "").strip():                 # папку переименовали
+        title = item["folder"].strip()
+    else:
+        title = (item.get("title") or item.get("text") or "").strip() or "Пункт"
     prefix = f"{index:0{width}d}" if index is not None else ""
     head = " ".join(p for p in (prefix, num) if p)
     room = max(10, FOLDER_LIMIT - len(head) - 1) if head else FOLDER_LIMIT

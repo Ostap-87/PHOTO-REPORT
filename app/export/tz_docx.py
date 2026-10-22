@@ -10,6 +10,7 @@ app.tz.docx_parser.paragraph_refs): после текста пункта, пер
 
 from __future__ import annotations
 
+import difflib
 import io
 import os
 
@@ -20,12 +21,55 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
 from app.tz.docx_parser import paragraph_refs
+from app.tz.perfect import perfect
 
 from .common import (STATUS_COLORS, STATUS_TINTS, ImageCache, PhotoIndex, file_label, fmt_date, item_extra,
                      item_label, norm_options, photo_caption, select_items, status_key, status_label)
 from .docx_report import _cell_margins, _hyperlink, _para_box, _row_flags, _run, _widths
 
 TWIP_CM = 567.0
+
+
+def _rewrite_paragraph(p_el) -> bool:
+    """Текст абзаца — «в совершенном виде» с сохранением оформления: правки по символам внутри w:t."""
+    ts = list(p_el.iter(qn("w:t")))
+    if not ts:
+        return False
+    segs = [t.text or "" for t in ts]
+    full = "".join(segs)
+    new = perfect(full)
+    if new == full:
+        return False
+    ops = difflib.SequenceMatcher(None, full, new, autojunk=False).get_opcodes()
+    for tag, i1, i2, j1, j2 in reversed(ops):
+        if tag == "equal":
+            continue
+        # сегмент и смещение начала правки
+        pos, k = 0, 0
+        while k < len(segs) - 1 and pos + len(segs[k]) < i1:
+            pos += len(segs[k])
+            k += 1
+        off = i1 - pos
+        rest = i2 - i1
+        seg = segs[k]
+        segs[k] = seg[:off] + new[j1:j2] + seg[off + min(rest, len(seg) - off):]
+        rest -= min(rest, len(seg) - off)
+        n = k + 1
+        while rest > 0 and n < len(segs):              # удаление, заходящее в следующие сегменты
+            cut = min(rest, len(segs[n]))
+            segs[n] = segs[n][cut:]
+            rest -= cut
+            n += 1
+    for t, v in zip(ts, segs):
+        if t.text != v:
+            t.text = v
+            t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+    return True
+
+
+def rewrite_perfect(doc) -> int:
+    """Весь текст ТЗ (абзацы и ячейки таблиц) — в совершенном виде. -> сколько абзацев изменено."""
+    return sum(_rewrite_paragraph(p) for p in list(doc.element.body.iter(qn("w:p"))))
 
 
 class NotWordTZ(ValueError):
@@ -197,6 +241,8 @@ def export_tz_docx(project: dict, project_dir: str, out_path: str, options: dict
                         "выгрузите «Отчёт Word».")
     doc = Document(src)
     refs = paragraph_refs(doc)
+    if opts.get("perfect", True):                            # «Исполнитель обеспечил…» вместо «обеспечивает»
+        rewrite_perfect(doc)
     pos: dict[str, int] = {}
     for i, (ref, _el) in enumerate(refs):
         pos.setdefault(ref, i)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from .common import (STATUS_COLORS, STATUS_TINTS, PhotoIndex, item_extra, parse_dt, photo_datetime, quality_text,
+from .common import (text_of, title_of, STATUS_COLORS, STATUS_TINTS, PhotoIndex, item_extra, parse_dt, photo_datetime, quality_text,
                      status_key, status_label)
 
 _FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
@@ -82,7 +82,7 @@ def export_xlsx(project: dict, project_dir: str, out_path: str) -> str:
         level = int(it.get("level") or 1)
         done = parse_dt(it.get("done_at"))
         values = {
-            "num": it.get("num") or "", "section": ex["section"], "title": it.get("title") or it.get("text") or "",
+            "num": it.get("num") or "", "section": ex["section"], "title": title_of(it) or text_of(it),
             "required": ex["required"], "qty": it.get("qty"), "unit": it.get("unit") or "",
             "status": status_label(st), "date": done if done else (it.get("done_at") or ""),
             "comment": it.get("comment") or "", "note": ex["note"], "links": "\n".join(ex["links"]),
@@ -136,7 +136,7 @@ def export_xlsx(project: dict, project_dir: str, out_path: str) -> str:
 
     for r, p in enumerate(ordered, start=2):
         it = item_by_id.get(p.get("item_id"))
-        item_text = f"{it.get('num') or ''} {it.get('title') or ''}".strip() if it else "Неразобранное"
+        item_text = f"{it.get('num') or ''} {title_of(it)}".strip() if it else "Неразобранное"
         exif = p.get("exif") or {}
         gps = exif.get("gps")
         gps_text = ""

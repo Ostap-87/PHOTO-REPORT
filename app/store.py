@@ -53,7 +53,7 @@ def load(pid: str) -> dict:
     if not os.path.exists(p):
         raise KeyError("проект не найден")
     with open(p, encoding="utf-8") as fh:
-        return json.load(fh)
+        return ensure_fields(json.load(fh))
 
 
 def save(project: dict) -> dict:
@@ -131,9 +131,32 @@ def _new_item_id(prj: dict) -> str:
 def new_item(prj: dict, **fields) -> dict:
     it = {"id": _new_item_id(prj), "num": "", "level": 1, "title": "", "text": "", "qty": None, "unit": "",
           "source": None, "status": "todo", "comment": "", "done_at": "", "hint": "", "photo_ids": [],
-          "kind": "tz", "section": "", "required": "", "note": "", "links": []}
+          "kind": "tz", "section": "", "required": "", "note": "", "links": [],
+          "pf_title": "", "pf_text": "", "pf_manual": False, "folder": "", "remark": ""}
     it.update({k: v for k, v in fields.items() if k in it and k != "id"})
+    refresh_perfect(it)
     return it
+
+
+def refresh_perfect(it: dict, force: bool = False) -> dict:
+    """Текст пункта «в совершенном виде» (pf_title, pf_text) — если его не правили руками."""
+    from app.tz.perfect import perfect
+    if force or not it.get("pf_manual"):
+        it["pf_title"] = perfect(it.get("title") or "")
+        it["pf_text"] = perfect(it.get("text") or "")
+    return it
+
+
+def ensure_fields(prj: dict) -> dict:
+    """Проекты прежних версий: досчитать совершенный вид и новые поля пунктов."""
+    for key in ("items", "tz_items"):
+        for it in prj.get(key) or []:
+            if "pf_text" not in it:
+                it.setdefault("pf_manual", False)
+                it.setdefault("folder", "")
+                it.setdefault("remark", "")
+                refresh_perfect(it)
+    return prj
 
 
 def set_tz(prj: dict, parsed: dict, rel_file: str) -> dict:

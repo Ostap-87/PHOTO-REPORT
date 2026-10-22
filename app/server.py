@@ -21,6 +21,7 @@ import yaml
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
+from app import sources
 from app import pipeline, store
 
 APP_ROOT = store.APP_ROOT
@@ -250,7 +251,7 @@ def tz_file(pid: str):
 
 # ------------------------------------------------------------------ пункты
 ITEM_FIELDS = {"title", "text", "qty", "unit", "comment", "hint", "num", "level", "done_at", "section", "required",
-               "note"}
+               "note", "pf_title", "pf_text", "folder", "remark"}
 
 
 @app.post("/api/projects/{pid}/items")
@@ -259,6 +260,9 @@ def item_add(pid: str, body: dict = Body(...)):
     with store.edit(pid) as prj:
         it = store.new_item(prj, **{k: body.get(k) for k in ITEM_FIELDS if body.get(k) is not None})
         it["title"] = (it["title"] or "Новый пункт").strip()[:300]
+        if body.get("kind") == "custom":                     # своя папка пользователя (не из ТЗ)
+            it["kind"] = "custom"
+        store.refresh_perfect(it)
         after = body.get("after")
         items = prj.setdefault("items", [])
         pos = next((i + 1 for i, x in enumerate(items) if x["id"] == after), len(items))
@@ -287,6 +291,12 @@ def item_patch(pid: str, iid: str, body: dict = Body(...)):
                 if k in ("hint", "title", "text", "required") and v != it.get(k):
                     reclassify = True
                 it[k] = v
+        if "pf_title" in body or "pf_text" in body:          # текст отчёта поправлен руками — не пересчитывать
+            it["pf_manual"] = True
+        if body.get("pf_reset"):
+            it["pf_manual"] = False
+        if any(k in body for k in ("title", "text", "pf_reset")):
+            store.refresh_perfect(it)
         if isinstance(body.get("links"), list):
             it["links"] = [str(u).strip()[:2000] for u in body["links"] if str(u).strip()][:100]
         if "status" in body:
@@ -402,6 +412,111 @@ async def photos_upload(pid: str, files: list[UploadFile] = File(...), item_id: 
             pipeline.pipeline().submit(pid, [r["id"] for r in new])
     return {"added": len(new), "files_added": len(new_files), "skipped_duplicates": skipped, "rejected": rejected,
             "job": pipeline.pipeline().status(pid)}
+
+
+def _ingest(pid: str, entries, item_id: str | None = None, note=None) -> dict:
+    """Картинки (имя, байты) -> фото проекта (без дублей по sha256); порциями по 200 — обработка и
+    раскладка начинаются, пока остальное ещё читается."""
+    prj = _load(pid)
+    known = {p.get("sha256"): p["id"] for p in prj.get("photos", []) + prj.get("files", [])}
+    d = store.project_dir(pid)
+    pending: list[dict] = []
+    added = skipped = 0
+
+    def commit():
+        if not pending:
+            return
+        with store.edit(pid) as prj2:
+            prj2.setdefault("photos", []).extend(pending)
+            if item_id:
+                for rec in pending:
+                    store.assign(prj2, rec["id"], item_id, confirmed=True)
+        pipeline.pipeline().submit(pid, [r["id"] for r in pending])
+        pending.clear()
+
+    for name, blob in entries:
+        name = _safe_name(name, "photo.jpg")
+        sha = hashlib.sha256(blob).hexdigest()
+        if sha in known:
+            skipped += 1
+            continue
+        ext = os.path.splitext(name)[1].lower()
+        rec = _photo_record(name, ext, sha, len(blob), item_id or None)
+        with open(os.path.join(d, "photos", "original", rec["id"] + ext), "wb") as fh:
+            fh.write(blob)
+        known[sha] = rec["id"]
+        pending.append(rec)
+        added += 1
+        if note and added % 20 == 0:
+            note(f"Загружаю фото: {added}")
+        if len(pending) >= 200:
+            commit()
+    commit()
+    return {"added": added, "skipped_duplicates": skipped}
+
+
+def _import_bg(pid: str, label: str, make_entries) -> dict:
+    """Импорт в фоне: сообщение в статусе проекта, по окончании — раскладка (через обработку фото)."""
+    job = pipeline.pipeline().job(pid)
+
+    def work():
+        job.message, job.error, job.importing = f"{label}…", "", True
+        try:
+            def note(msg):
+                job.message = msg
+            res = _ingest(pid, make_entries(note), note=note)
+            job.message = f"{label}: добавлено фото {res['added']}" + (
+                f", дубли пропущены: {res['skipped_duplicates']}" if res["skipped_duplicates"] else "")
+            if not res["added"] and not res["skipped_duplicates"]:
+                job.error = job.message = f"{label}: картинок не найдено (JPG, PNG, HEIC, TIFF, WEBP или ZIP с ними)"
+        except sources.SourceError as exc:
+            job.error = job.message = str(exc)
+        except Exception as exc:  # noqa: BLE001
+            job.error = job.message = f"{label}: не получилось — {exc}"
+        finally:
+            job.importing = False
+    threading.Thread(target=work, daemon=True).start()
+    return {"started": True, "job": pipeline.pipeline().status(pid)}
+
+
+@app.post("/api/projects/{pid}/photos/import")
+def photos_import(pid: str, body: dict = Body(...)):
+    """Фото из папки на компьютере или флешке ({"path"}) или по ссылке ({"url"}: Яндекс Диск, Google Диск,
+    Dropbox, прямая ссылка на файл или ZIP) — в фоне, ход виден в статусе проекта."""
+    _load(pid)
+    if body.get("path"):
+        path = os.path.expanduser(str(body["path"]))
+        if not os.path.exists(path):
+            raise HTTPException(400, f"Нет такой папки: {path}")
+        return _import_bg(pid, "Папка " + os.path.basename(path.rstrip("/")), lambda note: sources.iter_path(path))
+    url = str(body.get("url") or "").strip()
+    if not url:
+        raise HTTPException(400, "Укажите папку или ссылку")
+    kind = {"yandex": "Яндекс Диск", "gdrive": "Google Диск", "dropbox": "Dropbox"}.get(sources.kind_of(url), "Ссылка")
+    tmp = os.path.join(store.project_dir(pid), "downloads", time.strftime("%Y%m%d-%H%M%S"))
+
+    def entries(note):
+        try:
+            for f in sources.download(url, tmp, note):
+                yield from sources.iter_path(f)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)            # скачанное уже скопировано в проект
+    return _import_bg(pid, kind, entries)
+
+
+@app.post("/api/pick-folder")
+def pick_folder():
+    """Системное окно выбора папки (только в окне приложения на Mac/Windows; в браузере — unavailable)."""
+    try:
+        import webview
+        win = webview.windows[0] if webview.windows else None
+    except Exception:  # noqa: BLE001
+        win = None
+    if win is None:
+        return {"path": None, "unavailable": True}
+    res = win.create_file_dialog(getattr(webview, "FOLDER_DIALOG", 20))
+    path = (res[0] if isinstance(res, (list, tuple)) and res else res) or None
+    return {"path": path, "unavailable": False}
 
 
 def _zip_has_images(data: bytes) -> bool:
@@ -625,14 +740,14 @@ def _report_name(prj: dict, ext: str) -> str:
 
 @app.get("/api/projects/{pid}/export/{fmt}")
 def export(pid: str, fmt: str, which: str = Query("work"), photos_per_row: int = Query(2),
-           include_unsorted: bool = Query(False), only_done: bool = Query(False)):
+           include_unsorted: bool = Query(False), only_done: bool = Query(False), perfect: bool = Query(True)):
     prj = _load(pid)
     from app import export as ex
     d = store.project_dir(pid)
     outdir = os.path.join(d, "exports")
     os.makedirs(outdir, exist_ok=True)
     options = {"photos_per_row": max(1, min(4, photos_per_row)), "include_unsorted": include_unsorted,
-               "only_status": sorted(DONE_STATUSES) if only_done else None}
+               "only_status": sorted(DONE_STATUSES) if only_done else None, "perfect": perfect}
     name = _report_name(prj, fmt)
     out = os.path.join(outdir, f"report.{fmt}")
     try:

@@ -53,14 +53,17 @@ def apply(prj: dict, result: dict, mode: str = "ai") -> dict:
         it["source"] = (src or {}).get("source")
         prev = old.get(_key(it["num"], it["title"]))
         if prev:
-            for k in ("status", "comment", "done_at", "hint", "photo_ids", "links"):
+            for k in ("status", "comment", "done_at", "hint", "photo_ids", "links", "folder", "remark"):
                 it[k] = prev.get(k, it[k])
+            if prev.get("pf_manual"):
+                it.update(pf_title=prev.get("pf_title", ""), pf_text=prev.get("pf_text", ""), pf_manual=True)
             for p in prj.get("photos", []) + prj.get("files", []):
                 if p.get("item_id") == prev["id"]:
                     p["item_id"] = it["id"]
         items.append(it)
     # вложения пунктов, которых больше нет (в т.ч. пунктов ТЗ при первом реестре), — в «Неразобранное»:
     # фото затем раскладываются заново уже по строкам реестра
+    items += [it for it in prj.get("items", []) if it.get("kind") == "custom"]   # свои папки пользователя остаются
     ids = {it["id"] for it in items}
     for p in prj.get("photos", []) + prj.get("files", []):
         if p.get("item_id") and p["item_id"] not in ids:
@@ -76,9 +79,12 @@ def apply(prj: dict, result: dict, mode: str = "ai") -> dict:
 
 def drop(prj: dict) -> dict:
     """Вернуться к работе по всем пунктам ТЗ (реестр удаляется, вложения — в «Неразобранное»)."""
-    prj["items"] = [dict(it, photo_ids=[], kind="tz") for it in prj.get("tz_items") or []]
+    custom = [it for it in prj.get("items", []) if it.get("kind") == "custom"]
+    keep = {it["id"] for it in custom}
+    prj["items"] = [dict(it, photo_ids=[], kind="tz") for it in prj.get("tz_items") or []] + custom
     for p in prj.get("photos", []) + prj.get("files", []):
-        p.update(item_id=None, confirmed=False)
+        if p.get("item_id") not in keep:
+            p.update(item_id=None, confirmed=False)
     prj.pop("registry", None)
     prj["clarify"] = []
     return prj

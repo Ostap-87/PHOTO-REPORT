@@ -260,6 +260,13 @@ label.slot:hover { background: var(--accent-soft); }
 .folder.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .folder .ic { width: 16px; text-align: center; flex: none; color: var(--faint); }
 .folder .fl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder .fx { border: 0; background: none; color: var(--faint); cursor: pointer; padding: 0 2px; font-size: 12px; visibility: hidden; }
+.folder:hover .fx { visibility: visible; }
+.folder .fx:hover { color: var(--accent); }
+.newfold { margin: 8px 10px; }
+.ptools .inlineask { width: 420px; max-width: 60vw; margin: 0; }
+.inlineask { width: calc(100% - 16px); margin: 4px 8px; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 7px; font: inherit; font-size: 13px; }
+.pfsw button { font-size: 12px; }
 .folder .fc { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .folder.warnf .fc { color: var(--warn); font-weight: 700; }
 .folder .sdot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--todo); }
@@ -421,6 +428,7 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
         <h2>Исполнение</h2>
         <div class="progress-line"><div class="bar" id="execBar"></div><span class="txt" id="execTxt"></span></div>
         <label class="btn sm" id="tzLoadRight" hidden>Загрузить файл ТЗ<input type="file" id="tzInput2" accept=".docx,.pdf,.xlsx,.xlsm,.csv,.txt,.md" hidden></label>
+        <div class="views pfsw" id="pfSwitch" title="Текст пунктов справа"><button data-pf="0">Как в ТЗ</button><button data-pf="1">Выполнено</button></div>
         <button class="btn sm" id="addItem">+ Пункт</button>
       </div>
       <div class="regbar" id="regbar" hidden></div>
@@ -445,7 +453,10 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
   <section class="view" id="viewPhotos" hidden>
     <div class="ptools">
       <label class="btn primary">Загрузить фото<input type="file" id="phInput" multiple accept="image/*,.heic,.heif,.zip" hidden></label>
-      <span class="hintline">или перетащите фото и ZIP-архивы в окно</span>
+      <button class="btn" id="phFolder" title="Папка на компьютере или флешке — со всеми подпапками">Папка / флешка</button>
+      <input type="file" id="phDir" webkitdirectory multiple hidden>
+      <button class="btn" id="phLink" title="Яндекс Диск, Google Диск, Dropbox или прямая ссылка на файл/ZIP">По ссылке</button>
+      <span class="hintline">или перетащите фото, ZIP и папки в окно</span>
       <span class="spacer"></span>
       <div class="opts">
         <label class="chk" title="Тёмные, смазанные, блёклые и шумные кадры исправляются автоматически; исходник не меняется">Улучшение
@@ -607,6 +618,11 @@ const thumbUrl = p => `${P()}/photos/${p.id}/thumb?v=${p.ver || 0}`;
 const itemById = id => (S.prj.items || []).find(i => i.id === id);
 const photoById = id => (S.prj.photos || []).find(p => p.id === id);
 const itemLabel = it => it ? `${it.num ? it.num + ' ' : ''}${it.title || 'Без названия'}` : 'Неразобранное';
+let PF = true;                                      // правый экран: текст «в совершенном виде» (или как в ТЗ)
+try { PF = localStorage.getItem('pr:pf') !== '0'; } catch (e) { /* без хранилища — по умолчанию */ }
+const tTitle = it => (PF && it.pf_title) || it.title || '';
+const tText = it => (PF && it.pf_text) || it.text || '';
+const folderLabel = it => it ? (it.folder || itemLabel(it)) : 'Неразобранное';
 const pct = x => `${Math.round((x || 0) * 100)}%`;
 const filesOf = iid => (S.prj.files || []).filter(f => f.item_id === iid);
 const attached = it => (it.photo_ids || []).length + filesOf(it.id).length + (it.links || []).length;
@@ -907,6 +923,10 @@ function buildItem(it) {
       <label>Номер</label><input class="e-num">
       <label>Название</label><input class="e-title">
       <label>Текст</label><textarea class="e-text" rows="3"></textarea>
+      <label>В отчёте: название</label><input class="e-pft" title="Как пункт звучит в отчёте — «в совершенном виде»">
+      <label>В отчёте: текст</label><textarea class="e-pfx" rows="3"></textarea>
+      <label></label><div><button class="btn sm ghost e-pfreset" type="button">Пересчитать автоматически</button></div>
+      <label>Папка для фото</label><input class="e-folder" placeholder="по умолчанию — номер и название пункта">
       <label>Количество</label><div style="display:flex;gap:6px"><input class="e-qty" style="width:90px"><input class="e-unit" placeholder="ед." style="width:90px"></div>
       <label>Уровень</label><select class="e-level"><option value="1">пункт</option><option value="2">подпункт</option><option value="3">подпункт 3-го уровня</option></select>
       <label class="rg">Раздел</label><input class="e-section rg">
@@ -933,11 +953,14 @@ function buildItem(it) {
   });
   $('.more', el).addEventListener('click', () => toggleEdit(el, id));
   $('.e-cancel', el).addEventListener('click', () => { $('.editbox', el).hidden = true; });
+  $('.e-pfreset', el).addEventListener('click', async () => { await patchItem(id, { pf_reset: true }); const x = itemById(id); if (x) { $('.e-pft', el).value = x.pf_title || ''; $('.e-pfx', el).value = x.pf_text || ''; } });
   $('.e-save', el).addEventListener('click', async () => {
     const body = { num: $('.e-num', el).value, title: $('.e-title', el).value, text: $('.e-text', el).value,
       qty: $('.e-qty', el).value, unit: $('.e-unit', el).value, level: +$('.e-level', el).value };
     const x = itemById(id);
     if (x && x.kind === 'registry') Object.assign(body, { section: $('.e-section', el).value, required: $('.e-required', el).value, note: $('.e-note', el).value });
+    body.folder = $('.e-folder', el).value.trim();
+    if (x && ($('.e-pft', el).value !== (x.pf_title || '') || $('.e-pfx', el).value !== (x.pf_text || ''))) Object.assign(body, { pf_title: $('.e-pft', el).value, pf_text: $('.e-pfx', el).value });
     await patchItem(id, body);
     $('.editbox', el).hidden = true; refresh();
   });
@@ -959,6 +982,7 @@ function toggleEdit(el, id) {
   box.hidden = !box.hidden;
   if (!box.hidden) {
     $('.e-num', el).value = it.num || ''; $('.e-title', el).value = it.title || ''; $('.e-text', el).value = it.text || '';
+    $('.e-pft', el).value = it.pf_title || ''; $('.e-pfx', el).value = it.pf_text || ''; $('.e-folder', el).value = it.folder || '';
     $('.e-qty', el).value = it.qty == null ? '' : it.qty; $('.e-unit', el).value = it.unit || ''; $('.e-level', el).value = String(Math.min(3, it.level || 1));
     $$('.rg', el).forEach(x => x.hidden = it.kind !== 'registry');
     $('.e-section', el).value = it.section || ''; $('.e-required', el).value = it.required || ''; $('.e-note', el).value = it.note || '';
@@ -971,12 +995,12 @@ function updateItem(el, it) {
   const isSection = lvl === 1 && (S.prj.items || []).some(x => (x.level || 1) > 1) && !it.text;
   el.className = `item lvl-${lvl} st-${it.status}${isSection ? ' section' : ''}`;
   $('.num', el).textContent = it.num || '—';
-  $('.ititle', el).textContent = it.title || 'Без названия';
+  $('.ititle', el).textContent = tTitle(it) || 'Без названия';
   const st = $('.stamp', el);
   st.hidden = it.status === 'todo';
   st.textContent = SLABEL[it.status] + (it.done_at && DONE.has(it.status) ? ` · ${it.done_at}` : '');
-  const tx = $('.itext', el); const showText = it.text && it.text.trim() !== (it.title || '').trim();
-  tx.hidden = !showText; tx.textContent = showText ? it.text : '';
+  const tx = $('.itext', el), tt = tText(it); const showText = tt && tt.trim() !== tTitle(it).trim();
+  tx.hidden = !showText; tx.textContent = showText ? tt : '';
   const q = $('.qty', el); q.hidden = it.qty == null || it.qty === '';
   q.innerHTML = q.hidden ? '' : `Количество: <b>${esc(it.qty)}</b> ${esc(it.unit || '')}`;
   $$('.seg button', el).forEach(b => b.classList.toggle('on', b.dataset.st === it.status));
@@ -1095,15 +1119,50 @@ async function confirmPhotos(ids) {
   renderData();
 }
 
+// папка с компьютера / флешки: системное окно выбора (в окне приложения) или выбор папки браузером
+$('#phFolder').addEventListener('click', async () => {
+  let r = null;
+  try { r = await api('POST', '/api/pick-folder', {}); } catch (e) { r = null; }
+  if (r && r.path) { await startImport({ path: r.path }); return; }
+  if (r && r.unavailable === false) return;                 // окно выбора закрыли
+  $('#phDir').click();
+});
+$('#phDir').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) uploadPhotos(f, null); });
+$('#phLink').addEventListener('click', e => {
+  const btn = e.currentTarget;
+  inlineAsk(btn, '', 'Ссылка: Яндекс Диск, Google Диск, Dropbox или файл/ZIP', async url => { await startImport({ url }); }, false, false);
+});
+async function startImport(body) {
+  const r = await api('POST', `${P()}/photos/import`, body);
+  S.job = r.job; renderStatus();
+  toast(body.url ? 'Скачиваю по ссылке — ход виден вверху, фото разложатся сами' : 'Читаю папку — фото добавляются и раскладываются по ходу');
+  pollFast();
+}
+function pollFast() { let n = 0; const t = setInterval(async () => { await refresh(); if (++n > 300 || !(S.job && S.job.running)) clearInterval(t); }, 1500); }
+// перетаскивание папок: обходим вложенные папки (WebKit / Chrome)
+async function filesFromDrop(dt) {
+  const items = [...(dt.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (!items.some(e => e.isDirectory)) return [...dt.files];
+  const out = [];
+  const walk = ent => new Promise(res => {
+    if (ent.isFile) { ent.file(f => { out.push(f); res(); }, () => res()); return; }
+    const rd = ent.createReader(); const all = [];
+    const more = () => rd.readEntries(async es => { if (!es.length) { for (const x of all) await walk(x); res(); } else { all.push(...es); more(); } }, () => res());
+    more();
+  });
+  for (const e of items) await walk(e);
+  return out;
+}
+
 // глобальное перетаскивание файлов
 let dragDepth = 0;
 window.addEventListener('dragenter', e => { if (S.pid && [...e.dataTransfer.types].includes('Files')) { dragDepth++; $('#dropOverlay').hidden = false; } });
 window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('#dropOverlay').hidden = true; });
 window.addEventListener('dragover', e => e.preventDefault());
-window.addEventListener('drop', e => {
+window.addEventListener('drop', async e => {
   e.preventDefault(); dragDepth = 0; $('#dropOverlay').hidden = true;
   if (!S.pid || !e.dataTransfer.files.length) return;
-  const files = [...e.dataTransfer.files];
+  const files = await filesFromDrop(e.dataTransfer);
   const doc = files.find(f => /\.(docx|pdf|xlsx|xlsm|csv|txt|md)$/i.test(f.name));
   if (doc && (S.tab === 'tz' || !(S.prj.items || []).length) && files.length === 1) { uploadTz(doc); return; }
   uploadPhotos(files, null);
@@ -1167,13 +1226,29 @@ function renderPhotos() {
     h += `<div class="fgroup">Папки по пунктам ТЗ</div>`;
     h += items.map(it => {
       const n = (it.photo_ids || []).length;
-      return `<div class="folder l${Math.min(3, it.level || 1)} ${S.folder === it.id ? 'on' : ''}" data-folder="${it.id}" title="${esc(itemLabel(it))}"><span class="sdot st-${it.status}"></span><span class="fl">${esc(itemLabel(it))}</span><span class="fc">${n || ''}</span></div>`;
+      return `<div class="folder l${Math.min(3, it.level || 1)} ${S.folder === it.id ? 'on' : ''}" data-folder="${it.id}" title="${esc(folderLabel(it))}"><span class="sdot st-${it.status}"></span><span class="fl">${esc(folderLabel(it))}</span><span class="fc">${n || ''}</span><button class="fx" data-fren="${it.id}" title="Переименовать папку">✎</button>${it.kind === 'custom' ? `<button class="fx" data-fdelf="${it.id}" title="Удалить папку">✕</button>` : ''}</div>`;
     }).join('');
   }
+  h += `<button class="btn sm ghost newfold" id="newFolder">+ Новая папка</button>`;
   const extras = [['dup', 'Дубли', '⧉'], ['reshoot', 'Переснять', '↻'], ['faces', 'С лицами', '☺'], ['enh', 'Улучшенные', '✦'], ['err', 'Ошибки чтения', '!']].filter(([k]) => photosIn(k).length);
   if (extras.length) h += `<div class="fgroup">Отборы</div>` + extras.map(([k, l, i]) => f(k, l, `<span class="ic">${i}</span>`)).join('');
   const fold = $('#folders');
   const scroll = fold.scrollTop; fold.innerHTML = h; fold.scrollTop = scroll;
+  $('#newFolder').addEventListener('click', e => inlineAsk(e.currentTarget, '', 'Название новой папки', async name => {
+    const r = await api('POST', `${P()}/items`, { title: name, kind: 'custom', level: 1 });
+    S.prj = r.project; S.folder = r.item.id; renderData(); toast(`Папка «${name}» создана`);
+  }));
+  $$('[data-fren]', fold).forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation(); const it = itemById(b.dataset.fren); if (!it) return;
+    inlineAsk(b.closest('.folder'), folderLabel(it), 'Название папки (пусто — как в пункте ТЗ)', async name => {
+      await patchItem(it.id, { folder: name === itemLabel(it) ? '' : name, reclassify: false }); refresh();
+    }, true);
+  }));
+  $$('[data-fdelf]', fold).forEach(b => b.addEventListener('click', async e => {
+    e.stopPropagation();
+    if (!confirm('Удалить папку? Фото из неё перейдут в «Неразобранное».')) return;
+    S.prj = await api('DELETE', `${P()}/items/${b.dataset.fdelf}`); S.folder = 'all'; renderData();
+  }));
   $$('.folder', fold).forEach(el => {
     el.addEventListener('click', () => { S.folder = el.dataset.folder; S.sel.clear(); renderPhotos(); $('#grid').scrollTop = 0; });
     const key = el.dataset.folder;
@@ -1183,7 +1258,7 @@ function renderPhotos() {
   const list = photosIn(S.folder);
   const it = itemById(S.folder);
   const titles = { all: 'Все фото', unsorted: 'Неразобранное', check: 'Разложено автоматически — проверьте', dup: 'Дубли', reshoot: 'Переснять: слишком тёмные или смазанные', faces: 'Фото с лицами', enh: 'Улучшенные автоматически', err: 'Не удалось прочитать' };
-  $('#gTitle').textContent = it ? itemLabel(it) : titles[S.folder];
+  $('#gTitle').textContent = it ? folderLabel(it) : titles[S.folder];
   const subs = { unsorted: 'Не нашёл уверенного пункта. Нажмите на подсказку под фото или перетащите фото в папку слева.', check: 'Нажмите ✓ на фото, если папка верная, — по подтверждённым фото остальные раскладываются точнее.', dup: 'Почти одинаковые кадры. В отчёт лучше взять один — самый резкий.' };
   $('#gSub').textContent = it ? `${SLABEL[it.status]}${it.hint ? ' · подсказка: ' + it.hint : ''} · ${list.length} фото` : (subs[S.folder] || `${list.length} фото`);
   // выделение
@@ -1207,6 +1282,22 @@ function renderPhotos() {
     });
     $$('.sugg button', c).forEach(b => b.addEventListener('click', () => movePhotos([id], b.dataset.it)));
   });
+}
+function inlineAsk(anchor, value, placeholder, onSave, allowEmpty = false, saveOnBlur = true) {
+  // поле ввода на месте элемента: Enter — сохранить, Esc или уход — отмена
+  const inp = document.createElement('input');
+  inp.className = 'inlineask'; inp.value = value; inp.placeholder = placeholder;
+  anchor.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = async ok => {
+    if (done) return; done = true;
+    const v = inp.value.trim();
+    inp.replaceWith(anchor);                                 // кнопка или строка папки — на место
+    if (ok && (v || allowEmpty)) { try { await onSave(v); } catch (e) { /* api() уже показал ошибку */ } }
+    renderPhotos();
+  };
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); });
+  inp.addEventListener('blur', () => finish(saveOnBlur));
 }
 function cardHtml(p) {
   const it = itemById(p.item_id);
@@ -1384,6 +1475,13 @@ async function addItemManual() {
   S.prj = r.project; renderData();
   const ne = $(`#items .item[data-id="${r.item.id}"]`); if (ne) { toggleEdit(ne, r.item.id); ne.scrollIntoView({ block: 'center' }); }
 }
+function renderPf() { $$('#pfSwitch button').forEach(b => b.classList.toggle('on', (b.dataset.pf === '1') === PF)); }
+$('#pfSwitch').addEventListener('click', e => {
+  const b = e.target.closest('[data-pf]'); if (!b) return;
+  PF = b.dataset.pf === '1'; try { localStorage.setItem('pr:pf', PF ? '1' : '0'); } catch (x) { /* */ }
+  renderPf(); $$('#items > .item').forEach(el => { const it = itemById(el.dataset.id); if (it) updateItem(el, it); });
+});
+renderPf();
 $('#addItem').addEventListener('click', addItemManual);
 $('#addFirst').addEventListener('click', addItemManual);
 $('#filters').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (b) { S.filter = b.dataset.f; renderTz(); } });

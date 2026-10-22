@@ -130,3 +130,68 @@ def test_tz_with_photos_body_paragraphs_and_non_word(client):
     client.post(f"/api/projects/{pid2}/tz", files={"file": ("tz_uborka.pdf", _sample("tz_uborka.pdf"))})
     r = client.get(f"/api/projects/{pid2}/export/tzdocx")
     assert r.status_code == 400 and "Word" in r.json()["detail"]
+
+
+def test_perfect_text_and_folders(client):
+    from app.tz.perfect import perfect
+    assert perfect("Исполнитель обеспечивает площадку и согласовывает макет.") == \
+        "Исполнитель обеспечил площадку и согласовал макет."
+    assert perfect("Площадка должна соответствовать нормам.") == "Площадка соответствовала нормам."
+    assert perfect("Фотозона должна быть брендирована.") == "Фотозона была брендирована."
+    assert perfect("Обеспечить наличие стенда.") == "Обеспечили наличие стенда."
+    assert perfect("Регистрация ведётся на сайте.") == "Регистрация ведётся на сайте."   # страдательный — как есть
+    pid = client.post("/api/projects", json={"name": "Форум"}).json()["id"]
+    client.post(f"/api/projects/{pid}/tz", files={"file": ("tz_forum_table.docx", _sample("tz_forum_table.docx"))})
+    prj = client.get(f"/api/projects/{pid}").json()
+    it = next(x for x in prj["items"] if x["title"].startswith("Исполнитель обеспечивает площадку"))
+    assert it["pf_title"].startswith("Исполнитель обеспечил площадку")
+    # ручная правка текста отчёта сохраняется, сброс — пересчитывает
+    out = client.patch(f"/api/projects/{pid}/items/{it['id']}", json={"pf_title": "Площадка обеспечена"}).json()
+    assert out["pf_title"] == "Площадка обеспечена" and out["pf_manual"]
+    out = client.patch(f"/api/projects/{pid}/items/{it['id']}", json={"pf_reset": True}).json()
+    assert out["pf_title"].startswith("Исполнитель обеспечил")
+    # папки: своя папка и переименование; своя папка переживает составление реестра
+    r = client.post(f"/api/projects/{pid}/items", json={"title": "Дополнительные фото", "kind": "custom"}).json()
+    assert r["item"]["kind"] == "custom"
+    client.patch(f"/api/projects/{pid}/items/{it['id']}", json={"folder": "Площадка"})
+    from app.export import folder_names
+    names = folder_names(client.get(f"/api/projects/{pid}").json())
+    assert any(n.endswith("Площадка") for n in names.values())
+    prj = client.post(f"/api/projects/{pid}/registry/build", json={"mode": "rules"}).json()["project"]
+    assert any(x["id"] == r["item"]["id"] for x in prj["items"])
+    # «ТЗ с фото»: текст ТЗ в совершенном виде (по умолчанию) и как есть (perfect=false)
+    client.patch(f"/api/projects/{pid}/items/{prj['items'][0]['id']}", json={"status": "done"})
+    full = "".join(t.text or "" for t in Document(io.BytesIO(
+        client.get(f"/api/projects/{pid}/export/tzdocx").content)).element.body.iter(qn("w:t")))
+    assert "Исполнитель обеспечил площадку" in full and "обеспечивает площадку" not in full
+    raw = "".join(t.text or "" for t in Document(io.BytesIO(
+        client.get(f"/api/projects/{pid}/export/tzdocx?perfect=false").content)).element.body.iter(qn("w:t")))
+    assert "Исполнитель обеспечивает площадку" in raw
+
+
+def test_import_from_folder(client, tmp_path):
+    src = tmp_path / "flash" / "День 1"
+    src.mkdir(parents=True)
+    (src / "a.jpg").write_bytes(_jpeg((200, 30, 30)))
+    (src / "b.jpg").write_bytes(_jpeg((30, 30, 200)))
+    (src / "notes.txt").write_text("не фото")
+    pid = client.post("/api/projects", json={"name": "Флешка"}).json()["id"]
+    r = client.post(f"/api/projects/{pid}/photos/import", json={"path": str(tmp_path / "flash")}).json()
+    assert r["started"]
+    prj = _wait_photos(client, pid, 2)
+    assert len(prj["photos"]) == 2
+    assert client.post(f"/api/projects/{pid}/photos/import", json={"path": str(tmp_path / "нет")}).status_code == 400
+
+
+def test_gdrive_folder_page_parsing():
+    from app import sources
+    page = ('<div class="flip-entry" id="entry-1AbCdEfGhIj"><a href="https://drive.google.com/file/d/1AbCdEfGhIj/view">'
+            '<div class="flip-entry-title">IMG_0001.jpg</div></a></div>'
+            '<div class="flip-entry" id="entry-9ZyXwVuTsRq"><a href="https://drive.google.com/drive/folders/9ZyXwVuTsRq">'
+            '<div class="flip-entry-title">День 2</div></a></div>')
+    files, folders = sources.parse_gdrive_folder(page)
+    assert files == [("1AbCdEfGhIj", "IMG_0001.jpg")] and folders == ["9ZyXwVuTsRq"]
+    assert sources.kind_of("https://disk.yandex.ru/d/abc") == "yandex"
+    assert sources.kind_of("https://drive.google.com/drive/folders/xyz") == "gdrive"
+    with pytest.raises(sources.SourceError):
+        sources.download("ftp://example.org/x", str("/tmp"))
