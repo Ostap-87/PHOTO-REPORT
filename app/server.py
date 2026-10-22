@@ -26,6 +26,9 @@ from app import pipeline, store
 APP_ROOT = store.APP_ROOT
 WEBUI = os.path.join(APP_ROOT, "webui")
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff", ".webp", ".bmp"}
+FILE_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".ppt", ".pptx", ".txt", ".rtf", ".odt", ".ods",
+            ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".mp3", ".wav", ".m4a", ".zip", ".rar", ".7z",
+            ".eml", ".msg", ".html", ".htm", ".json", ".xml"}
 TZ_EXT = {".docx", ".pdf", ".xlsx", ".xlsm", ".csv", ".txt", ".md"}
 DONE_STATUSES = {"done", "provided", "executed"}
 
@@ -207,8 +210,11 @@ async def tz_upload(pid: str, file: UploadFile = File(...)):
     for i, png in enumerate(parsed.get("pages") or [], 1):
         with open(os.path.join(tzdir, "pages", f"page-{i:03d}.png"), "wb") as fh:
             fh.write(png)
+    from app.registry.build import full_text
     with store.edit(pid) as prj:
         store.set_tz(prj, parsed, f"tz/{name}")
+        with open(os.path.join(tzdir, "full_text.txt"), "w", encoding="utf-8") as fh:
+            fh.write(full_text(prj, parsed.get("full_text")))
         has_photos = any(p.get("status") == "ready" for p in prj.get("photos", []))
     if has_photos:
         _classify_bg(pid)
@@ -243,7 +249,8 @@ def tz_file(pid: str):
 
 
 # ------------------------------------------------------------------ пункты
-ITEM_FIELDS = {"title", "text", "qty", "unit", "comment", "hint", "num", "level", "done_at"}
+ITEM_FIELDS = {"title", "text", "qty", "unit", "comment", "hint", "num", "level", "done_at", "section", "required",
+               "note"}
 
 
 @app.post("/api/projects/{pid}/items")
@@ -277,9 +284,11 @@ def item_patch(pid: str, iid: str, body: dict = Body(...)):
                     v = None if v in ("", None) else v
                 else:
                     v = "" if v is None else str(v)[:5000]
-                if k in ("hint", "title", "text") and v != it.get(k):
+                if k in ("hint", "title", "text", "required") and v != it.get(k):
                     reclassify = True
                 it[k] = v
+        if isinstance(body.get("links"), list):
+            it["links"] = [str(u).strip()[:2000] for u in body["links"] if str(u).strip()][:100]
         if "status" in body:
             st = body["status"]
             if st not in store.STATUSES:
@@ -344,12 +353,29 @@ async def photos_upload(pid: str, files: list[UploadFile] = File(...), item_id: 
             store.item(prj, item_id)
         except KeyError as exc:
             raise HTTPException(404, str(exc)) from exc
-    known = {p.get("sha256"): p["id"] for p in prj.get("photos", [])}
+    known = {p.get("sha256"): p["id"] for p in prj.get("photos", []) + prj.get("files", [])}
     d = store.project_dir(pid)
-    new, skipped, rejected = [], [], []
+    new, skipped, rejected, new_files = [], [], [], []
     for f in files:
         data = await f.read()
         fname = _safe_name(f.filename, "photo.jpg")
+        fext = os.path.splitext(fname)[1].lower()
+        if fext in FILE_EXT and fext != ".zip" or (fext == ".zip" and item_id and not _zip_has_images(data)):
+            if not item_id:
+                rejected.append(fname)            # документы и видео кладутся только в конкретный пункт
+                continue
+            sha = hashlib.sha256(data).hexdigest()
+            if sha in known:
+                skipped.append(fname)
+                continue
+            rec = {"id": "f_" + secrets.token_hex(4), "name": fname, "ext": fext, "sha256": sha, "size": len(data),
+                   "item_id": item_id, "added": time.strftime("%Y-%m-%d %H:%M:%S")}
+            os.makedirs(os.path.join(d, "photos", "files"), exist_ok=True)
+            with open(os.path.join(d, "photos", "files", rec["id"] + fext), "wb") as fh:
+                fh.write(data)
+            known[sha] = rec["id"]
+            new_files.append(rec)
+            continue
         found = False
         for name, blob in _iter_upload_files(fname, data):
             found = True
@@ -365,15 +391,66 @@ async def photos_upload(pid: str, files: list[UploadFile] = File(...), item_id: 
             new.append(rec)
         if not found:
             rejected.append(fname)
-    if new:
+    if new or new_files:
         with store.edit(pid) as prj2:
             prj2.setdefault("photos", []).extend(new)
+            prj2.setdefault("files", []).extend(new_files)
             if item_id:
                 for rec in new:
                     store.assign(prj2, rec["id"], item_id, confirmed=True)
-        pipeline.pipeline().submit(pid, [r["id"] for r in new])
-    return {"added": len(new), "skipped_duplicates": skipped, "rejected": rejected,
+        if new:
+            pipeline.pipeline().submit(pid, [r["id"] for r in new])
+    return {"added": len(new), "files_added": len(new_files), "skipped_duplicates": skipped, "rejected": rejected,
             "job": pipeline.pipeline().status(pid)}
+
+
+def _zip_has_images(data: bytes) -> bool:
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            return any(os.path.splitext(n)[1].lower() in IMAGE_EXT for n in zf.namelist())
+    except zipfile.BadZipFile:
+        return False
+
+
+def _file_rec(prj: dict, fid: str) -> dict:
+    for f in prj.get("files", []):
+        if f["id"] == fid:
+            return f
+    raise KeyError("файл не найден")
+
+
+@app.get("/api/projects/{pid}/files/{fid}")
+def file_get(pid: str, fid: str):
+    prj = _load(pid)
+    f = _file_rec(prj, fid)
+    return FileResponse(os.path.join(store.project_dir(pid), "photos", "files", f["id"] + f["ext"]), filename=f["name"])
+
+
+@app.patch("/api/projects/{pid}/files/{fid}")
+def file_patch(pid: str, fid: str, body: dict = Body(...)):
+    _load(pid)
+    with store.edit(pid) as prj:
+        f = _file_rec(prj, fid)
+        if "item_id" in body:
+            iid = body["item_id"] or None
+            if iid:
+                store.item(prj, iid)
+            f["item_id"] = iid
+        out = dict(f)
+    return out
+
+
+@app.delete("/api/projects/{pid}/files/{fid}")
+def file_delete(pid: str, fid: str):
+    _load(pid)
+    with store.edit(pid) as prj:
+        f = _file_rec(prj, fid)
+        prj["files"] = [x for x in prj.get("files", []) if x["id"] != fid]
+    try:
+        os.remove(os.path.join(store.project_dir(pid), "photos", "files", f["id"] + f["ext"]))
+    except OSError:
+        pass
+    return {"ok": True}
 
 
 def _photo_path(pid: str, ph: dict, kind: str) -> str:
@@ -567,6 +644,12 @@ def export(pid: str, fmt: str, which: str = Query("work"), photos_per_row: int =
             ex.export_xlsx(prj, d, out)
         elif fmt == "zip":
             ex.export_zip(prj, d, out, "original" if which == "original" else "work")
+        elif fmt == "registry":
+            if not hasattr(ex, "export_registry_xlsx"):
+                raise HTTPException(501, "Выгрузка реестра ещё не подключена")
+            out = os.path.join(outdir, "registry.xlsx")
+            name = _report_name(prj, "xlsx").replace(".xlsx", " — реестр подтверждений.xlsx")
+            ex.export_registry_xlsx(prj, out)
         else:
             raise HTTPException(404, "неизвестный формат")
     except HTTPException:
@@ -605,3 +688,133 @@ def export_folders(pid: str, body: dict = Body(default={})):
     elif body.get("open", True) and sys.platform.startswith("win"):
         os.startfile(dest)  # type: ignore[attr-defined]  # noqa: S606
     return {"path": dest, "folders": sorted(x for x in os.listdir(dest) if os.path.isdir(os.path.join(dest, x)))}
+
+
+# ------------------------------------------------------------------ ИИ: ключ и реестр подтверждений
+@app.get("/api/ai/status")
+def ai_status():
+    from app import secrets_store
+    from app.registry import ai
+    return {"configured": bool(secrets_store.get_api_key()), "source": secrets_store.source(),
+            "masked": secrets_store.masked(), "model": ai.MODEL, "config_dir": secrets_store.config_dir()}
+
+
+@app.put("/api/ai/key")
+def ai_key_set(body: dict = Body(...)):
+    from app import secrets_store
+    key = str(body.get("api_key") or "").strip()
+    if not key.startswith("sk-ant-") or len(key) < 30 or any(c.isspace() for c in key):
+        raise HTTPException(400, "Это не похоже на ключ API Anthropic (он начинается с «sk-ant-»)")
+    secrets_store.set_api_key(key)
+    return ai_status()
+
+
+@app.delete("/api/ai/key")
+def ai_key_delete():
+    from app import secrets_store
+    secrets_store.clear_api_key()
+    return ai_status()
+
+
+@app.post("/api/ai/test")
+def ai_test():
+    from app.registry import ai
+    try:
+        model = ai.test_key()
+    except ai.AIError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True, "model": model}
+
+
+def _tz_text(pid: str, prj: dict) -> str:
+    from app.registry.build import full_text
+    p = os.path.join(store.project_dir(pid), "tz", "full_text.txt")
+    if os.path.exists(p):
+        with open(p, encoding="utf-8") as fh:
+            return fh.read()
+    return full_text(prj)
+
+
+@app.post("/api/projects/{pid}/registry/build")
+def registry_build(pid: str, body: dict = Body(default={})):
+    """Составить «Реестр подтверждений» ИИ по заданию config/registry_prompt.md (в фоне)."""
+    from app import secrets_store
+    from app.registry import ai, build
+    prj = _load(pid)
+    if not (prj.get("tz_items") or prj.get("items")):
+        raise HTTPException(400, "Сначала загрузите ТЗ")
+    if not secrets_store.get_api_key():
+        raise HTTPException(409, "Для анализа нужен ключ API Anthropic — добавьте его в настройках")
+    job = pipeline.pipeline().job(pid)
+    if job.stage == "registry":
+        return {"started": False, "job": job.as_dict()}
+    text = _tz_text(pid, prj)
+    title = (prj.get("tz") or {}).get("title") or ""
+
+    def work():
+        job.stage, job.message, job.error = "registry", "ИИ читает ТЗ и составляет реестр…", ""
+        try:
+            def note(msg):
+                job.message = msg
+            result = ai.analyze(text, title, progress=note, verify=bool(body.get("verify", True)))
+            with store.edit(pid) as prj2:
+                build.apply(prj2, result, mode="ai")
+            job.message = f"Реестр готов: {len(result['rows'])} строк, на уточнение {len(result['clarify'])}"
+        except ai.AIError as exc:
+            job.error = job.message = str(exc)
+        except Exception as exc:  # noqa: BLE001
+            job.error = job.message = f"Анализ не выполнен: {exc}"
+        finally:
+            job.stage = "idle"
+        if not job.error:
+            _classify_bg(pid)
+    threading.Thread(target=work, daemon=True).start()
+    return {"started": True, "job": pipeline.pipeline().status(pid)}
+
+
+@app.post("/api/projects/{pid}/registry/import")
+async def registry_import(pid: str, file: UploadFile = File(...)):
+    """Загрузить готовый реестр из Excel (столбцы как в «Реестре подтверждений»)."""
+    from app.registry import build
+    _load(pid)
+    data = await file.read()
+    try:
+        result = build.import_xlsx(data)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    with store.edit(pid) as prj:
+        build.apply(prj, result, mode="import")
+    _classify_bg(pid)
+    return _full(_load(pid))
+
+
+@app.delete("/api/projects/{pid}/registry")
+def registry_drop(pid: str):
+    from app.registry import build
+    _load(pid)
+    with store.edit(pid) as prj:
+        build.drop(prj)
+    _classify_bg(pid)
+    return _full(_load(pid))
+
+
+@app.post("/api/projects/{pid}/registry/rows")
+def registry_add_row(pid: str, body: dict = Body(...)):
+    """Добавить строку в реестр вручную или из пункта ТЗ (tz_id)."""
+    _load(pid)
+    with store.edit(pid) as prj:
+        src = next((t for t in prj.get("tz_items", []) if t["id"] == body.get("tz_id")), None)
+        it = store.new_item(prj, num=(src or {}).get("num") or body.get("num", ""),
+                            title=(src or {}).get("title") or body.get("title", "Новая строка"),
+                            text=(src or {}).get("text") or body.get("text", ""))
+        it.update(kind="registry", level=1, source=(src or {}).get("source"),
+                  section=str(body.get("section") or ""), required=str(body.get("required") or ""))
+        items = prj.setdefault("items", [])
+        after = body.get("after")
+        pos = next((i + 1 for i, x in enumerate(items) if x["id"] == after), len(items))
+        items.insert(pos, it)
+        if not prj.get("registry"):
+            prj["registry"] = {"built": time.strftime("%Y-%m-%d %H:%M:%S"), "mode": "manual", "stale": False,
+                               "summary": {}, "rows": 0, "clarify": 0}
+            prj["items"] = [x for x in prj["items"] if x.get("kind") == "registry"]
+    return {"item": it, "project": _full(_load(pid))}

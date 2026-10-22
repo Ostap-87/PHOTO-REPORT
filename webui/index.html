@@ -193,6 +193,51 @@ label.slot:hover { background: var(--accent-soft); }
 .drop p { color: var(--muted); margin: 0 0 18px; }
 .formats { font-size: 12px; color: var(--faint); margin-top: 14px; }
 
+/* ---------- реестр подтверждений */
+.regbar { display: flex; flex-direction: column; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.regbar .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.regbar .callout { font-size: 13px; color: var(--muted); max-width: 760px; }
+.regbar .callout b { color: var(--ink); }
+.regbar .sum { font-size: 12px; color: var(--muted); }
+.regbar .stale { font-size: 12.5px; color: var(--warn); background: var(--warn-soft); padding: 4px 9px; border-radius: 6px; }
+.regbar .busy { font-size: 13px; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+.regbar .err { font-size: 13px; color: var(--danger); background: var(--danger-soft); padding: 6px 10px; border-radius: 7px; }
+.spin { width: 14px; height: 14px; border: 2px solid var(--accent-soft); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.views { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.views button { border: 0; background: none; padding: 3px 11px; border-radius: 6px; font-size: 12.5px; color: var(--muted); }
+.views button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.secchip { font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 10px; padding: 1px 8px; white-space: nowrap; margin-top: 2px; }
+.req { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 7px 7px 0; padding: 6px 10px; font-size: 13px; }
+.req .t, .note .t { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--accent); display: block; margin-bottom: 1px; }
+.note { background: var(--warn-soft); border-radius: 7px; padding: 6px 10px; font-size: 12.5px; color: var(--ink); }
+.note .t { color: var(--warn); }
+.extra { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.extra textarea { width: 100%; font-size: 12.5px; min-height: 32px; height: 32px; }
+.flist { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.flist .f { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.flist .f a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); text-decoration: none; }
+.flist .f a:hover { color: var(--accent); }
+.flist .f .x { border: 0; background: none; color: var(--faint); padding: 0 4px; }
+.flist .f .x:hover { color: var(--danger); }
+#altList { padding: 18px 22px 80px; display: flex; flex-direction: column; gap: 12px; }
+.altcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; max-width: 900px; width: 100%; margin: 0 auto; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 6px; }
+.altcard.warn { border-left: 4px solid var(--warn); }
+.altcard .reason { font-size: 13px; background: var(--warn-soft); border-radius: 7px; padding: 6px 10px; }
+.outline { max-width: 900px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 2px; }
+.outline .o { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.outline .o:hover { background: var(--panel); }
+.outline .o .num { flex: none; }
+.outline .o .tt { flex: 1; min-width: 0; }
+.outline .o .add { opacity: 0; }
+.outline .o:hover .add { opacity: 1; }
+.outline .o.inreg .tt { color: var(--accent); font-weight: 600; }
+.dlg { position: fixed; inset: 0; background: rgba(8,12,10,.55); z-index: 55; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.dlg .box { width: min(560px, 100%); }
+.dlg input { width: 100%; height: 36px; font-family: var(--mono); font-size: 13px; }
+.dlg p { font-size: 13px; color: var(--muted); margin: 6px 0; }
+
 /* ---------- фото */
 #viewPhotos { display: flex; flex-direction: column; }
 .ptools { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -335,6 +380,7 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
   <span class="spacer"></span>
   <span class="chip" id="jobChip" hidden><span class="dot"></span><span class="t"></span></span>
   <span class="chip" id="modelChip" title="Модель распознавания фото"><span class="dot"></span><span class="t">Модель…</span></span>
+  <button class="btn sm ghost" id="aiBtn" title="Анализ ТЗ искусственным интеллектом: ключ API">ИИ: <span id="aiState">…</span></button>
 </header>
 
 <main>
@@ -377,6 +423,7 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
         <label class="btn sm" id="tzLoadRight" hidden>Загрузить файл ТЗ<input type="file" id="tzInput2" accept=".docx,.pdf,.xlsx,.xlsm,.csv,.txt,.md" hidden></label>
         <button class="btn sm" id="addItem">+ Пункт</button>
       </div>
+      <div class="regbar" id="regbar" hidden></div>
       <div class="filters" id="filters"></div>
       <div class="panebody" id="itemsBody">
         <div id="tzEmpty" class="tz-empty" hidden>
@@ -389,6 +436,7 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
           </div>
         </div>
         <div id="items"></div>
+        <div id="altList" hidden></div>
       </div>
     </div>
   </section>
@@ -444,6 +492,7 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
         <div class="row"><span>Фото в ряд</span><select id="rPer"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></div>
         <label class="chk"><input type="checkbox" id="rOnlyDone"> Только выполненные пункты</label>
         <label class="chk"><input type="checkbox" id="rUnsorted"> Добавить неразобранные фото</label>
+        <button class="btn big" data-exp="registry" id="expRegistry" hidden>Реестр подтверждений (Excel)</button>
         <button class="btn primary big" data-exp="docx">Отчёт Word (.docx)</button>
         <button class="btn big" data-exp="pdf">Отчёт PDF</button>
         <button class="btn big" data-exp="xlsx">Таблица Excel</button>
@@ -475,6 +524,25 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
     <button class="vclose" id="vClose" title="Закрыть (Esc)">×</button>
   </div>
 </div>
+<div class="dlg" id="aiDlg" hidden>
+  <div class="box">
+    <h2>Анализ ТЗ искусственным интеллектом</h2>
+    <p>Реестр подтверждений составляет модель Claude (Anthropic) строго по вашему заданию — файл
+      <code>config/registry_prompt.md</code>. Для этого нужен ключ API: создайте его на
+      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>
+      (раздел API Keys) и вставьте сюда.</p>
+    <p>Ключ хранится только на этом компьютере (<span id="aiDir"></span>). Текст ТЗ при анализе отправляется
+      в Anthropic; оплата — по тарифу Anthropic за каждый анализ. Фото никуда не отправляются.</p>
+    <div id="aiNow" class="pathbox" style="margin:8px 0"></div>
+    <input id="aiKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap">
+      <button class="btn danger" id="aiDel">Удалить ключ</button><span class="spacer"></span>
+      <button class="btn" id="aiTest">Проверить</button>
+      <button class="btn ghost" id="aiClose">Закрыть</button>
+      <button class="btn primary" id="aiSave">Сохранить</button>
+    </div>
+  </div>
+</div>
 <div id="dropOverlay" hidden><div>Отпустите, чтобы загрузить</div></div>
 <div id="upl" hidden><div id="uplT"></div><div class="bar"><i id="uplBar" style="width:0"></i></div></div>
 <div id="toast"></div>
@@ -492,7 +560,7 @@ const APPLIED = { exposure: 'яркость', gamma: 'яркость', brightnes
   sharpen: 'резкость', unsharp: 'резкость', deblur: 'резкость', saturation: 'насыщенность', vibrance: 'насыщенность' };
 const FLAGS = { dark: 'тёмное', underexposed: 'тёмное', bright: 'пересвет', overexposed: 'пересвет', blurry: 'смазано', very_blurry: 'сильно смазано', blur: 'смазано',
   low_contrast: 'блёклое', noisy: 'шум', noise: 'шум', color_cast: 'цветной оттенок', cast: 'цветной оттенок', tilted: 'завален горизонт' };
-const S = { pid: null, prj: null, tab: 'tz', folder: 'all', sel: new Set(), filter: 'all', model: null, job: null,
+const S = { pid: null, prj: null, tab: 'tz', folder: 'all', sel: new Set(), filter: 'all', model: null, job: null, view: 'registry', ai: null,
   origFor: null, vIndex: -1, vList: [], busyUpload: false };
 
 // ------------------------------------------------------------------ сеть
@@ -539,6 +607,8 @@ const itemById = id => (S.prj.items || []).find(i => i.id === id);
 const photoById = id => (S.prj.photos || []).find(p => p.id === id);
 const itemLabel = it => it ? `${it.num ? it.num + ' ' : ''}${it.title || 'Без названия'}` : 'Неразобранное';
 const pct = x => `${Math.round((x || 0) * 100)}%`;
+const filesOf = iid => (S.prj.files || []).filter(f => f.item_id === iid);
+const attached = it => (it.photo_ids || []).length + filesOf(it.id).length + (it.links || []).length;
 const reshootOf = p => (p.reshoot === true || p.reshoot === false) ? p.reshoot : !!p.reshoot_auto;
 
 // ------------------------------------------------------------------ навигация
@@ -571,7 +641,7 @@ async function goProjects() {
   }).join('');
 }
 async function openProject(pid, tab) {
-  S.pid = pid; S.folder = 'all'; S.sel.clear(); S.origFor = null; S.filter = 'all';
+  S.pid = pid; S.folder = 'all'; S.sel.clear(); S.origFor = null; S.filter = 'all'; S.view = 'registry';
   try { S.prj = await api('GET', P()); } catch (e) { return goProjects(); }
   S.job = S.prj.job;
   S.tab = tab || (S.prj.items.length ? 'tz' : 'tz');
@@ -606,7 +676,7 @@ function renderStatus() {
   const j = S.job, jc = $('#jobChip');
   if (S.pid && j && j.running) {
     jc.hidden = false; jc.className = 'chip busy';
-    $('.t', jc).textContent = j.stage === 'classifying' ? 'Раскладка по папкам…' : `Обработка ${j.done} из ${j.total}`;
+    $('.t', jc).textContent = j.stage === 'registry' ? 'ИИ составляет реестр…' : j.stage === 'classifying' ? 'Раскладка по папкам…' : `Обработка ${j.done} из ${j.total}`;
   } else jc.hidden = true;
   if (S.tab === 'photos' && S.pid) renderBanner();
 }
@@ -615,8 +685,10 @@ async function tick() {
     if (S.pid) {
       const st = await fetch(`${P()}/status`).then(r => r.ok ? r.json() : null);
       if (!st) return;
-      S.model = st.model; const wasRunning = S.job && S.job.running; S.job = st.job;
+      S.model = st.model; const wasRunning = S.job && S.job.running; const wasReg = S.job && S.job.stage === 'registry'; S.job = st.job;
       renderStatus();
+      if (wasReg && st.job.stage !== 'registry') { if (st.job.error) toast(st.job.error, 'err'); else if (st.job.message) toast(st.job.message); S.view = 'registry'; }
+      if (S.tab === 'tz' && (wasReg || st.job.stage === 'registry')) renderRegbar();
       if (S.prj && st.rev !== S.prj.rev) { S.prj = await api('GET', P()); renderData(); }
       else if (wasRunning && !st.job.running) { S.prj = await api('GET', P()); renderData(); }
     } else {
@@ -642,20 +714,96 @@ function renderTz() {
   const cnt = { todo: 0, done: 0, provided: 0, executed: 0, na: 0 };
   items.forEach(i => cnt[i.status] = (cnt[i.status] || 0) + 1);
   const need = items.length - cnt.na, ready = cnt.done + cnt.provided + cnt.executed;
-  const withPh = items.filter(i => (i.photo_ids || []).length).length;
+  const withPh = items.filter(i => attached(i)).length;
   $('#execBar').innerHTML = items.length ? ['done', 'provided', 'executed', 'na'].map(k => `<i class="b-${k}" style="width:${cnt[k] / items.length * 100}%"></i>`).join('') : '';
-  $('#execTxt').textContent = items.length ? `готово ${ready} из ${need} · с фото ${withPh} из ${items.length}` : '';
+  $('#execTxt').textContent = items.length ? `готово ${ready} из ${need} · с вложениями ${withPh} из ${items.length}` : '';
   // фильтры
-  const fl = [['all', 'Все', items.length], ['todo', 'Не начато', cnt.todo], ['ready', 'Готово', ready], ['nophoto', 'Без фото', items.filter(i => !(i.photo_ids || []).length && i.status !== 'na').length], ['auto', 'Проверить фото', items.filter(i => (i.photo_ids || []).some(id => { const p = photoById(id); return p && !p.confirmed; })).length]];
+  const fl = [['all', 'Все', items.length], ['todo', 'Не начато', cnt.todo], ['ready', 'Готово', ready], ['nophoto', 'Без вложений', items.filter(i => !attached(i) && i.status !== 'na').length], ['auto', 'Проверить фото', items.filter(i => (i.photo_ids || []).some(id => { const p = photoById(id); return p && !p.confirmed; })).length]];
   $('#filters').innerHTML = fl.map(([k, l, n]) => `<button data-f="${k}" class="${S.filter === k ? 'on' : ''}">${l} · ${n}</button>`).join('');
-  renderItems();
+  renderRegbar();
+  const alt = S.prj.registry && S.view !== 'registry';
+  $('#items').hidden = !!alt; $('#altList').hidden = !alt; $('#filters').hidden = !items.length || !!alt;
+  if (alt) renderAlt(); else renderItems();
 }
+const hasReg = () => !!(S.prj && S.prj.registry);
+function renderRegbar() {
+  const bar = $('#regbar'), items = S.prj.items || [], reg = S.prj.registry, j = S.job || {};
+  if (!items.length && !reg) { bar.hidden = true; return; }
+  bar.hidden = false;
+  let h = '';
+  if (j.stage === 'registry') {
+    h += `<div class="busy"><span class="spin"></span>${esc(j.message || 'ИИ составляет реестр…')} Это может занять несколько минут.</div>`;
+  } else if (!reg) {
+    h += `<div class="callout"><b>Реестр подтверждений.</b> ИИ прочитает всё ТЗ по вашему заданию и выпишет пункты, по которым нужно приложить подтверждение, — что именно и в каком виде; спорные пункты — отдельно. Строки реестра станут папками для фото, скриншотов и файлов.</div>
+      <div class="row"><button class="btn primary sm" data-reg="build">Составить реестр (ИИ)</button>
+      <label class="btn sm">Загрузить готовый реестр (Excel)<input type="file" accept=".xlsx,.xlsm" data-reg="import" hidden></label></div>`;
+  } else {
+    const sm = reg.summary || {}, cl = (S.prj.clarify || []).length, all = (S.prj.tz_items || []).length;
+    h += `<div class="row"><div class="views">
+        <button data-view="registry" class="${S.view === 'registry' ? 'on' : ''}">Реестр подтверждений · ${items.length}</button>
+        <button data-view="clarify" class="${S.view === 'clarify' ? 'on' : ''}">Требуют уточнения · ${cl}</button>
+        <button data-view="all" class="${S.view === 'all' ? 'on' : ''}">Все пункты ТЗ · ${all}</button></div>
+      <span class="spacer"></span>
+      <a class="btn sm" href="${P()}/export/registry" download>Скачать реестр (Excel)</a>
+      <button class="btn sm" data-reg="build">${reg.mode === 'ai' ? 'Составить заново' : 'Составить ИИ'}</button>
+      <label class="btn sm ghost">Загрузить реестр<input type="file" accept=".xlsx,.xlsm" data-reg="import" hidden></label>
+      <button class="btn sm ghost" data-reg="drop" title="Работать по всем пунктам ТЗ без реестра">Без реестра</button></div>`;
+    const info = [reg.mode === 'ai' ? `составлен ИИ ${esc(reg.built || '')}` : reg.mode === 'import' ? `загружен из Excel ${esc(reg.built || '')}` : 'составлен вручную',
+      sm.analyzed ? `проанализировано: ${esc(sm.analyzed)}` : ''].filter(Boolean).join(' · ');
+    h += `<div class="sum">${info}${sm.issues ? `<br>Неоднозначности: ${esc(sm.issues)}` : ''}</div>`;
+    if (reg.stale) h += `<div class="stale">ТЗ заменено после составления реестра — составьте реестр заново.</div>`;
+  }
+  if (j.error && j.stage !== 'registry') h += `<div class="err">${esc(j.error)}</div>`;
+  if (bar.innerHTML !== h) bar.innerHTML = h;
+}
+async function buildRegistry() {
+  if (!S.ai || !S.ai.configured) { openAi(true); return; }
+  if (hasReg() && !confirm('Составить реестр заново? Статусы, комментарии и вложения сохранятся у строк с тем же номером и наименованием.')) return;
+  try { const r = await api('POST', `${P()}/registry/build`, {}); S.job = r.job; renderRegbar(); renderStatus(); }
+  catch (e) { if (/ключ/i.test(String(e.message))) openAi(true); }
+}
+async function importRegistry(file) {
+  if (!file) return;
+  const fd = new FormData(); fd.append('file', file, file.name);
+  S.prj = await api('POST', `${P()}/registry/import`, fd, true);
+  S.view = 'registry'; $$('#items > .item').forEach(e => e.remove());
+  toast(`Реестр загружен: ${S.prj.items.length} строк`); renderData();
+}
+function renderAlt() {
+  const box = $('#altList');
+  if (S.view === 'clarify') {
+    const cl = S.prj.clarify || [];
+    box.innerHTML = `<div class="doc-title"><div class="kicker">Требуют уточнения</div><h1>Спорные пункты ТЗ</h1><div class="sub">Пункты, где по тексту ТЗ нельзя однозначно определить, нужно ли подтверждение и в каком виде. Уточните у заказчика.</div></div>` +
+      (cl.length ? cl.map((c, i) => `<div class="altcard warn"><div class="ihead"><span class="num">${esc(c.num || '—')}</span><h3 class="ititle">${esc(c.name)}</h3>${c.section ? `<span class="secchip">${esc(c.section)}</span>` : ''}</div>
+        <div class="itext open">${esc(c.description)}</div><div class="reason"><b>Причина:</b> ${esc(c.reason)}</div>
+        <div><button class="btn sm" data-clar="${i}">Добавить в реестр</button></div></div>`).join('') : '<div class="empty">Спорных пунктов нет.</div>');
+  } else {
+    const inReg = new Set((S.prj.items || []).map(it => String(it.num || '')));
+    box.innerHTML = `<div class="doc-title"><div class="kicker">Все пункты ТЗ</div><h1>${esc((S.prj.tz || {}).title || S.prj.name)}</h1><div class="sub">Нажмите на пункт, чтобы увидеть его в оригинале; «+ в реестр» — добавить строку вручную.</div></div><div class="outline">` +
+      (S.prj.tz_items || []).map(t => `<div class="o ${[...inReg].some(n => n.split(/[,;]/).map(x => x.trim()).includes(String(t.num))) ? 'inreg' : ''}" data-tz="${t.id}" style="padding-left:${8 + 18 * (Math.min(5, t.level || 1) - 1)}px"><span class="num">${esc(t.num || '—')}</span><span class="tt">${esc(t.title)}</span><button class="btn sm ghost add" data-tzadd="${t.id}">+ в реестр</button></div>`).join('') + '</div>';
+  }
+}
+$('#altList').addEventListener('click', async e => {
+  const add = e.target.closest('[data-tzadd]');
+  if (add) { const r = await api('POST', `${P()}/registry/rows`, { tz_id: add.dataset.tzadd }); S.prj = r.project; toast('Строка добавлена в реестр'); renderData(); return; }
+  const cl = e.target.closest('[data-clar]');
+  if (cl) { const c = (S.prj.clarify || [])[+cl.dataset.clar]; const r = await api('POST', `${P()}/registry/rows`, { num: c.num, title: c.name, text: c.description, section: c.section }); S.prj = r.project; toast('Строка добавлена в реестр — укажите, что приложить'); renderData(); return; }
+  const o = e.target.closest('[data-tz]');
+  if (o) { const t = (S.prj.tz_items || []).find(x => x.id === o.dataset.tz); if (t) highlightSource(t); }
+});
+$('#regbar').addEventListener('click', async e => {
+  const v = e.target.closest('[data-view]'); if (v) { S.view = v.dataset.view; renderTz(); return; }
+  const b = e.target.closest('[data-reg]'); if (!b || b.tagName === 'INPUT') return;
+  if (b.dataset.reg === 'build') buildRegistry();
+  if (b.dataset.reg === 'drop' && confirm('Вернуться к работе по всем пунктам ТЗ? Реестр будет удалён, вложения перейдут в «Неразобранное».')) { S.prj = await api('DELETE', `${P()}/registry`); S.view = 'registry'; $$('#items > .item').forEach(x => x.remove()); renderData(); }
+});
+$('#regbar').addEventListener('change', e => { if (e.target.dataset.reg === 'import') { importRegistry(e.target.files[0]); e.target.value = ''; } });
 function filteredItems() {
   const items = S.prj.items || [];
   switch (S.filter) {
     case 'todo': return items.filter(i => i.status === 'todo');
     case 'ready': return items.filter(i => DONE.has(i.status));
-    case 'nophoto': return items.filter(i => !(i.photo_ids || []).length && i.status !== 'na');
+    case 'nophoto': return items.filter(i => !attached(i) && i.status !== 'na');
     case 'auto': return items.filter(i => (i.photo_ids || []).some(id => { const p = photoById(id); return p && !p.confirmed; }));
     default: return items;
   }
@@ -729,22 +877,31 @@ function buildItem(it) {
   const el = document.createElement('article');
   el.className = 'item'; el.dataset.id = it.id;
   el.innerHTML = `
-    <header class="ihead" title="Показать в оригинале"><span class="num"></span><h3 class="ititle"></h3><span class="stamp" hidden></span>
+    <header class="ihead" title="Показать в оригинале"><span class="num"></span><h3 class="ititle"></h3><span class="secchip" hidden></span><span class="stamp" hidden></span>
       <button class="btn sm ghost more" title="Изменить пункт">✎</button></header>
     <div class="itext" title="Развернуть"></div>
     <div class="qty" hidden></div>
+    <div class="req" hidden><span class="t">Что приложить</span><span class="v"></span></div>
+    <div class="note" hidden><span class="t">Замечание анализа</span><span class="v"></span></div>
     <div class="seg">${STATUS.map(([k, l]) => `<button data-st="${k}" class="s-${k}" type="button">${l}</button>`).join('')}</div>
     <div class="row2">
       <textarea class="comment" rows="1" placeholder="Комментарий: что сделано, замечания"></textarea>
       <input class="hint" placeholder="Что на фото — подсказка для автосортировки" title="Например: «банкетные столы, белые скатерти». Помогает разложить фото точнее">
     </div>
     <div class="strip"></div>
+    <div class="extra" hidden>
+      <textarea class="links" rows="1" placeholder="Ссылки на размещения — по одной в строке"></textarea>
+      <div class="flist"><label class="btn sm" style="align-self:flex-start">+ файл: документ, видео, скриншот<input type="file" multiple hidden></label></div>
+    </div>
     <div class="editbox" hidden>
       <label>Номер</label><input class="e-num">
       <label>Название</label><input class="e-title">
       <label>Текст</label><textarea class="e-text" rows="3"></textarea>
       <label>Количество</label><div style="display:flex;gap:6px"><input class="e-qty" style="width:90px"><input class="e-unit" placeholder="ед." style="width:90px"></div>
       <label>Уровень</label><select class="e-level"><option value="1">пункт</option><option value="2">подпункт</option><option value="3">подпункт 3-го уровня</option></select>
+      <label class="rg">Раздел</label><input class="e-section rg">
+      <label class="rg">Что приложить</label><textarea class="e-required rg" rows="2"></textarea>
+      <label class="rg">Замечание</label><textarea class="e-note rg" rows="2"></textarea>
       <div class="acts"><button class="btn sm danger e-del" type="button">Удалить пункт</button><span class="spacer"></span>
         <button class="btn sm e-add" type="button">+ Пункт ниже</button><button class="btn sm ghost e-cancel" type="button">Отмена</button><button class="btn sm primary e-save" type="button">Сохранить</button></div>
     </div>`;
@@ -755,11 +912,23 @@ function buildItem(it) {
   const cm = $('.comment', el), hint = $('.hint', el);
   cm.addEventListener('input', () => { autosize(cm); clearTimeout(cm._t); cm._t = setTimeout(() => patchItem(id, { comment: cm.value, reclassify: false }, cm), 700); });
   hint.addEventListener('change', () => patchItem(id, { hint: hint.value }, hint));
+  const ln = $('.links', el);
+  ln.addEventListener('input', () => autosize(ln));
+  ln.addEventListener('change', () => patchItem(id, { links: ln.value.split(/\n+/).map(x => x.trim()).filter(Boolean), reclassify: false }, ln));
+  $('.flist input[type=file]', el).addEventListener('change', e => { uploadPhotos([...e.target.files], id); e.target.value = ''; });
+  $('.flist', el).addEventListener('click', async e => {
+    const x = e.target.closest('[data-fdel]'); if (!x) return;
+    if (!confirm('Удалить файл из пункта?')) return;
+    await api('DELETE', `${P()}/files/${x.dataset.fdel}`); refresh();
+  });
   $('.more', el).addEventListener('click', () => toggleEdit(el, id));
   $('.e-cancel', el).addEventListener('click', () => { $('.editbox', el).hidden = true; });
   $('.e-save', el).addEventListener('click', async () => {
-    await patchItem(id, { num: $('.e-num', el).value, title: $('.e-title', el).value, text: $('.e-text', el).value,
-      qty: $('.e-qty', el).value, unit: $('.e-unit', el).value, level: +$('.e-level', el).value });
+    const body = { num: $('.e-num', el).value, title: $('.e-title', el).value, text: $('.e-text', el).value,
+      qty: $('.e-qty', el).value, unit: $('.e-unit', el).value, level: +$('.e-level', el).value };
+    const x = itemById(id);
+    if (x && x.kind === 'registry') Object.assign(body, { section: $('.e-section', el).value, required: $('.e-required', el).value, note: $('.e-note', el).value });
+    await patchItem(id, body);
     $('.editbox', el).hidden = true; refresh();
   });
   $('.e-del', el).addEventListener('click', async () => {
@@ -781,6 +950,8 @@ function toggleEdit(el, id) {
   if (!box.hidden) {
     $('.e-num', el).value = it.num || ''; $('.e-title', el).value = it.title || ''; $('.e-text', el).value = it.text || '';
     $('.e-qty', el).value = it.qty ?? ''; $('.e-unit', el).value = it.unit || ''; $('.e-level', el).value = String(Math.min(3, it.level || 1));
+    $$('.rg', el).forEach(x => x.hidden = it.kind !== 'registry');
+    $('.e-section', el).value = it.section || ''; $('.e-required', el).value = it.required || ''; $('.e-note', el).value = it.note || '';
     $('.e-title', el).focus();
   }
 }
@@ -799,6 +970,19 @@ function updateItem(el, it) {
   const q = $('.qty', el); q.hidden = it.qty == null || it.qty === '';
   q.innerHTML = q.hidden ? '' : `Количество: <b>${esc(it.qty)}</b> ${esc(it.unit || '')}`;
   $$('.seg button', el).forEach(b => b.classList.toggle('on', b.dataset.st === it.status));
+  const reg = it.kind === 'registry';
+  const sc = $('.secchip', el); sc.hidden = !it.section; sc.textContent = it.section || '';
+  const rq = $('.req', el); rq.hidden = !it.required; $('.v', rq).textContent = it.required || '';
+  const nt = $('.note', el); nt.hidden = !it.note; $('.v', nt).textContent = it.note || '';
+  $('.extra', el).hidden = !reg && !(it.links || []).length && !filesOf(it.id).length;
+  const ln = $('.links', el), lv = (it.links || []).join('\n');
+  if (document.activeElement !== ln && ln.value !== lv) { ln.value = lv; autosize(ln); }
+  const fl = $('.flist', el), fsig = filesOf(it.id).map(f => f.id).join(',');
+  if (fl.dataset.sig !== fsig) {
+    fl.dataset.sig = fsig;
+    $$('.f', fl).forEach(x => x.remove());
+    fl.insertAdjacentHTML('afterbegin', filesOf(it.id).map(f => `<div class="f">📄 <a href="${P()}/files/${f.id}" download title="${esc(f.name)}">${esc(f.name)}</a><span class="hintline">${Math.max(1, Math.round((f.size || 0) / 1024))} КБ</span><button class="x" data-fdel="${f.id}" title="Удалить">✕</button></div>`).join(''));
+  }
   const cm = $('.comment', el), hint = $('.hint', el);
   if (document.activeElement !== cm && cm.value !== (it.comment || '')) { cm.value = it.comment || ''; autosize(cm); }
   if (document.activeElement !== hint && hint.value !== (it.hint || '')) hint.value = it.hint || '';
@@ -810,7 +994,7 @@ function updateItem(el, it) {
     const thumbs = ids.map(photoById).filter(Boolean).map(p => thumbHtml(p)).join('');
     const free = Math.max(0, 3 - ids.length);
     const slots = Array.from({ length: free }, () => `<div class="slot">место для фото</div>`).join('');
-    strip.innerHTML = thumbs + slots + `<label class="slot" title="Добавить фото в этот пункт">+ фото<input type="file" multiple accept="image/*,.heic,.heif,.zip" hidden></label>`;
+    strip.innerHTML = thumbs + slots + `<label class="slot" title="Добавить фото или скриншоты в этот пункт">+ фото / скриншот<input type="file" multiple accept="image/*,.heic,.heif,.zip" hidden></label>`;
     $('input[type=file]', strip).addEventListener('change', e => { uploadPhotos([...e.target.files], it.id); e.target.value = ''; });
     bindThumbs(strip);
   }
@@ -859,10 +1043,10 @@ async function uploadTz(file) {
 
 // ------------------------------------------------------------------ загрузка фото
 async function uploadPhotos(files, itemId) {
-  files = files.filter(f => /\.(jpe?g|png|heic|heif|tiff?|webp|bmp|zip)$/i.test(f.name) || /^image\//.test(f.type));
-  if (!files.length) { toast('Нет подходящих файлов: нужны фото (JPG, PNG, HEIC, TIFF, WEBP) или ZIP', 'err'); return; }
+  if (!itemId) files = files.filter(f => /\.(jpe?g|png|heic|heif|tiff?|webp|bmp|zip)$/i.test(f.name) || /^image\//.test(f.type));
+  if (!files.length) { toast('Нет подходящих файлов: нужны фото (JPG, PNG, HEIC, TIFF, WEBP) или ZIP. Документы и видео добавляйте в пункт кнопкой «+ файл»', 'err'); return; }
   const box = $('#upl'); box.hidden = false;
-  let added = 0, dup = 0; const batches = [];
+  let added = 0, dup = 0, nfiles = 0, rej = 0; const batches = [];
   let cur = [], size = 0;
   for (const f of files) { cur.push(f); size += f.size; if (cur.length >= 25 || size > 120e6) { batches.push(cur); cur = []; size = 0; } }
   if (cur.length) batches.push(cur);
@@ -872,9 +1056,11 @@ async function uploadPhotos(files, itemId) {
       S.uplCb = frac => { $('#uplT').textContent = `Загрузка фото: ${Math.min(total, sent + Math.round(b.length * frac))} из ${total}`; $('#uplBar').style.width = `${(sent + b.length * frac) / total * 100}%`; };
       S.uplCb(0);
       const r = await upload(`${P()}/photos`, b, itemId ? { item_id: itemId } : null);
-      added += r.added; dup += r.skipped_duplicates.length; sent += b.length;
+      added += r.added; nfiles += r.files_added || 0; rej += (r.rejected || []).length; dup += r.skipped_duplicates.length; sent += b.length;
     }
-    toast(`Загружено ${added} фото${dup ? `, повторы пропущены: ${dup}` : ''}. Идёт обработка и раскладка.`);
+    const parts = [added ? `${added} фото` : '', nfiles ? `файлов: ${nfiles}` : ''].filter(Boolean).join(', ');
+    toast(`Загружено: ${parts || 'ничего нового'}${dup ? `, повторы пропущены: ${dup}` : ''}.${added ? ' Идёт обработка и раскладка.' : ''}`);
+    if (rej) toast(`Не приняты: ${rej}. Документы и видео добавляйте в нужный пункт кнопкой «+ файл».`, 'err');
   } finally { box.hidden = true; S.uplCb = null; }
   await refresh();
 }
@@ -1114,6 +1300,7 @@ document.addEventListener('keydown', e => {
 
 // ------------------------------------------------------------------ отчёт
 function renderReport() {
+  $('#expRegistry').hidden = !hasReg();
   const items = S.prj.items || [], ph = S.prj.photos || [];
   const ready = items.filter(i => DONE.has(i.status)).length, need = items.filter(i => i.status !== 'na').length;
   const noPh = items.filter(i => i.status !== 'na' && !(i.photo_ids || []).length).length;
@@ -1222,6 +1409,36 @@ $('#selDelete').addEventListener('click', async () => {
   S.prj = await api('POST', `${P()}/photos/bulk`, { action: 'delete', photo_ids: ids }); renderData();
 });
 
+// ------------------------------------------------------------------ ключ ИИ
+async function loadAi() {
+  try { S.ai = await api('GET', '/api/ai/status'); } catch (e) { S.ai = null; }
+  $('#aiState').textContent = S.ai && S.ai.configured ? 'подключён' : 'нет ключа';
+  $('#aiBtn').classList.toggle('primary', !!(S.ai && !S.ai.configured && S.pid && (S.prj.items || []).length));
+}
+function openAi(fromBuild) {
+  $('#aiDlg').hidden = false; $('#aiKey').value = ''; S.aiThenBuild = !!fromBuild;
+  const a = S.ai || {};
+  $('#aiDir').textContent = a.config_dir || 'папка настроек';
+  $('#aiNow').textContent = a.configured ? `Ключ ${a.source === 'env' ? 'из переменной ANTHROPIC_API_KEY' : 'сохранён'}: ${a.masked} · модель ${a.model}` : 'Ключ не задан.';
+  $('#aiDel').hidden = !(a.configured && a.source === 'settings');
+  setTimeout(() => $('#aiKey').focus(), 50);
+}
+$('#aiBtn').addEventListener('click', () => openAi(false));
+$('#aiClose').addEventListener('click', () => { $('#aiDlg').hidden = true; });
+$('#aiSave').addEventListener('click', async () => {
+  const k = $('#aiKey').value.trim(); if (!k) { toast('Вставьте ключ', 'err'); return; }
+  S.ai = await api('PUT', '/api/ai/key', { api_key: k }); $('#aiKey').value = '';
+  await loadAi(); toast('Ключ сохранён на этом компьютере'); $('#aiDlg').hidden = true;
+  if (S.aiThenBuild && S.pid) buildRegistry();
+});
+$('#aiTest').addEventListener('click', async () => {
+  const k = $('#aiKey').value.trim();
+  if (k) { S.ai = await api('PUT', '/api/ai/key', { api_key: k }); $('#aiKey').value = ''; await loadAi(); }
+  toast('Проверяю ключ…'); const r = await api('POST', '/api/ai/test'); toast(`Ключ работает (модель ${r.model})`); openAi(S.aiThenBuild);
+});
+$('#aiDel').addEventListener('click', async () => { S.ai = await api('DELETE', '/api/ai/key'); await loadAi(); openAi(false); toast('Ключ удалён'); });
+$('#aiKey').addEventListener('keydown', e => { if (e.key === 'Enter') $('#aiSave').click(); if (e.key === 'Escape') $('#aiDlg').hidden = true; });
+
 // ------------------------------------------------------------------ старт
 function route() {
   const m = location.hash.match(/^#(p\d{8}-[0-9a-f]+)(?:\/(tz|photos|report))?/);
@@ -1231,6 +1448,7 @@ function route() {
 window.addEventListener('hashchange', route);
 route();
 tick();
+loadAi();
 </script>
 </body>
 </html>

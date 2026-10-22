@@ -130,14 +130,27 @@ def _new_item_id(prj: dict) -> str:
 
 def new_item(prj: dict, **fields) -> dict:
     it = {"id": _new_item_id(prj), "num": "", "level": 1, "title": "", "text": "", "qty": None, "unit": "",
-          "source": None, "status": "todo", "comment": "", "done_at": "", "hint": "", "photo_ids": []}
+          "source": None, "status": "todo", "comment": "", "done_at": "", "hint": "", "photo_ids": [],
+          "kind": "tz", "section": "", "required": "", "note": "", "links": []}
     it.update({k: v for k, v in fields.items() if k in it and k != "id"})
     return it
 
 
 def set_tz(prj: dict, parsed: dict, rel_file: str) -> dict:
-    """Пункты из разобранного ТЗ. Привязки фото переносятся на пункты с тем же номером и
-    названием; остальные фото уходят в «Неразобранное»."""
+    """Пункты из разобранного ТЗ. Все пункты хранятся в tz_items (левая панель, «Все пункты ТЗ»).
+    Рабочий список items — это пункты ТЗ, пока не составлен реестр подтверждений; если реестр уже есть,
+    он остаётся рабочим списком и помечается устаревшим (ТЗ заменено). Привязки фото переносятся на
+    пункты с тем же номером и названием; остальные фото уходят в «Неразобранное»."""
+    if prj.get("registry"):
+        tz_items = []
+        for raw in parsed.get("items") or []:
+            it = new_item(prj, **{k: raw.get(k) for k in ("num", "level", "title", "text", "qty", "unit", "source")})
+            it["level"] = int(it.get("level") or 1)
+            tz_items.append(it)
+        prj["tz_items"] = tz_items
+        prj["registry"]["stale"] = True
+        prj["tz"] = _tz_meta(parsed, rel_file)
+        return prj
     old = {(it.get("num"), it.get("title")): it for it in prj.get("items", [])}
     items = []
     for raw in parsed.get("items") or []:
@@ -156,10 +169,15 @@ def set_tz(prj: dict, parsed: dict, rel_file: str) -> dict:
         if p.get("item_id") and p["item_id"] not in ids:
             p.update(item_id=None, confirmed=False)
     prj["items"] = items
-    prj["tz"] = {"file": rel_file, "kind": parsed.get("kind"), "title": parsed.get("title") or "",
-                 "html": "tz/source.html" if parsed.get("html") else "", "pages": len(parsed.get("pages") or []),
-                 "warnings": list(parsed.get("warnings") or []), "loaded": _now()}
+    prj["tz_items"] = [dict(it, photo_ids=[]) for it in items]
+    prj["tz"] = _tz_meta(parsed, rel_file)
     return prj
+
+
+def _tz_meta(parsed: dict, rel_file: str) -> dict:
+    return {"file": rel_file, "kind": parsed.get("kind"), "title": parsed.get("title") or "",
+            "html": "tz/source.html" if parsed.get("html") else "", "pages": len(parsed.get("pages") or []),
+            "warnings": list(parsed.get("warnings") or []), "full_text": "tz/full_text.txt", "loaded": _now()}
 
 
 def item(prj: dict, iid: str) -> dict:

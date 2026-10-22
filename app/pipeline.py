@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 import traceback
@@ -177,10 +178,11 @@ class Job:
         self.pending_emb: dict[str, np.ndarray] = {}
         self.lock = threading.Lock()
         self.active = 0
+        self.error = ""
 
     def as_dict(self) -> dict:
         return {"total": self.total, "done": self.done, "errors": self.errors, "stage": self.stage,
-                "message": self.message, "running": self.active > 0 or self.stage in ("processing", "classifying"),
+                "message": self.message, "error": self.error, "running": self.active > 0 or self.stage in ("processing", "classifying", "registry"),
                 "elapsed": round(time.time() - self.started, 1) if self.started else 0}
 
 
@@ -342,7 +344,7 @@ def classify_project(pid: str, params: dict | None = None) -> dict:
     и служат примерами. -> {"classified": n, "assigned": k, "unsorted": m} или причина пропуска."""
     v = _vision()
     prj = store.load(pid)
-    items = [it for it in prj.get("items", []) if it.get("status") != "na"]
+    items = photo_targets(prj)
     if not items:
         return {"skipped": "нет пунктов ТЗ"}
     if not MODELS.ready():
@@ -355,7 +357,7 @@ def classify_project(pid: str, params: dict | None = None) -> dict:
             rgb, _, _ = v.io.load_image(_paths(pid, p)["original"])
             new[p["id"]] = MODELS.embedder().encode_images([rgb])[0]
         EMB.put(pid, new)
-    item_text = {it["id"]: MODELS.text_embs(v.classify.build_prompts(it)) for it in items}
+    item_text = {it["id"]: MODELS.text_embs(v.classify.build_prompts(_prompt_item(it))) for it in items}
     examples = {}
     for it in items:
         conf = [p["id"] for p in prj.get("photos", []) if p.get("item_id") == it["id"] and p.get("confirmed")]
@@ -384,6 +386,26 @@ def classify_project(pid: str, params: dict | None = None) -> dict:
             ph["suggestions"] = r["suggestions"]
             assigned += 1 if r["item_id"] else 0
     return {"classified": len(todo), "assigned": assigned, "unsorted": len(todo) - assigned}
+
+
+_VISUAL = re.compile(r"фото|скрин|снимк|изображен|кадр", re.I)
+
+
+def photo_targets(prj: dict) -> list[dict]:
+    """Пункты, по которым раскладываются фото. В реестре — строки, где требуется фото или скриншот
+    (по «Что приложить», наименованию и описанию); если таких нет — все строки."""
+    items = [it for it in prj.get("items", []) if it.get("status") != "na"]
+    reg = [it for it in items if it.get("kind") == "registry"]
+    if reg:
+        vis = [it for it in reg if _VISUAL.search(" ".join(str(it.get(k) or "") for k in ("required", "title", "text")))]
+        return vis or reg
+    return items
+
+
+def _prompt_item(it: dict) -> dict:
+    if it.get("kind") == "registry" and it.get("required") and not it.get("hint"):
+        return dict(it, hint=it["required"])
+    return it
 
 
 def parents(items: list[dict]) -> dict[str, str | None]:
