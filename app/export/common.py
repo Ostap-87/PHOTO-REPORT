@@ -245,7 +245,9 @@ def fmt_size(n) -> str:
         return ""
     for unit in ("Б", "КБ", "МБ", "ГБ"):
         if n < 1024 or unit == "ГБ":
-            return f"{n:.0f} {unit}" if unit in ("Б", "КБ") or n >= 10 else f"{n:.1f} {unit}".replace(".", ",")
+            if unit in ("Б", "КБ") or n >= 100:
+                return f"{n:.0f} {unit}"
+            return f"{n:.1f} {unit}".replace(".", ",")
         n /= 1024
     return ""
 

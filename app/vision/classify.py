@@ -109,6 +109,9 @@ def build_prompts(item: Mapping) -> list[str]:
     return res
 
 
+REF_SAMPLE = 1000  # сколько фото пакета брать для «типичного сходства» ref(x)
+
+
 def _norm(x: np.ndarray) -> np.ndarray:
     x = np.asarray(x, dtype=np.float32)
     if x.ndim == 1:
@@ -150,17 +153,15 @@ def scores(photo_embs, item_text_embs: Mapping[str, np.ndarray], examples: Mappi
     # 2) примеры, подтверждённые человеком
     if examples:
         all_ex = _norm(np.concatenate([np.asarray(v, np.float32) for v in examples.values()]))
-        sims_all = X @ all_ex.T                                     # N×E
-        pool = [sims_all]
-        if N > 1:
-            pp = X @ X.T
-            np.fill_diagonal(pp, np.nan)
-            pool.append(pp)
-        pooled = np.concatenate(pool, axis=1)
-        pooled = np.where(pooled > 0.97, np.nan, pooled)            # дубли и само фото не в счёт
-        with np.errstate(all="ignore"):
-            ref = np.nanmean(pooled, axis=1)
-        ref = np.where(np.isnan(ref), p["knn_ref"], np.maximum(ref, p["knn_ref"]))
+        # опорный набор: все примеры + до REF_SAMPLE остальных фото пакета (память N×1000, а не N×N)
+        others = X
+        if N > REF_SAMPLE:
+            others = X[np.random.default_rng(0).choice(N, REF_SAMPLE, replace=False)]
+        pooled = np.concatenate([X @ all_ex.T, X @ others.T], axis=1) if N > 1 else X @ all_ex.T
+        valid = pooled <= 0.97                                      # дубли и само фото не в счёт
+        cnt = valid.sum(1)
+        ref = np.where(valid, pooled, 0.0).sum(1) / np.maximum(cnt, 1)
+        ref = np.where(cnt > 0, np.maximum(ref, p["knn_ref"]), p["knn_ref"]).astype(np.float32)
         k = int(p["knn_k"])
         for j, iid in enumerate(ids):
             E = examples.get(iid)
