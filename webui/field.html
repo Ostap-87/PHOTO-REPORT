@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f5f4a">
+<title>ФотоОтчёт — съёмка</title>
+<style>
+  :root { --bg: #f3f4f1; --panel: #fff; --ink: #1b2420; --muted: #66706b; --line: #dfe3dc; --accent: #1f5f4a;
+          --soft: #e2eee8; --warn: #8a5a00; --warnbg: #fff4dc; --bad: #b3261e; --badbg: #fdecea; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--accent); color: #fff; padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; }
+  header h1 { font-size: 16px; margin: 0; }
+  header .sub { font-size: 12.5px; opacity: .85; }
+  .bar { height: 5px; background: rgba(255,255,255,.25); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: #fff; width: 0; transition: width .3s; }
+  .tabs { display: flex; gap: 6px; padding: 10px 16px 0; }
+  .tabs button { flex: 1; border: 1px solid var(--line); background: var(--panel); border-radius: 9px; padding: 9px; font: inherit; font-size: 14px; }
+  .tabs button.on { background: var(--soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  main { padding: 10px 12px calc(40px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 10px; }
+  .it { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .it.done { border-color: #b9d8c8; }
+  .h { display: flex; gap: 8px; align-items: baseline; }
+  .num { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); }
+  .t { font-weight: 600; flex: 1; }
+  .ok { color: var(--accent); font-size: 12.5px; white-space: nowrap; }
+  .req { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .remark { margin-top: 8px; background: var(--warnbg); color: var(--warn); border-radius: 8px; padding: 8px 10px; font-size: 13.5px; }
+  .remark b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .ph { display: flex; gap: 6px; overflow-x: auto; margin-top: 10px; }
+  .ph .p { position: relative; flex: none; }
+  .ph img, .ph .wait { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; background: #e8ebe6; display: grid; place-items: center; font-size: 11px; color: var(--muted); }
+  .ph .redo { position: absolute; inset: auto 0 0 0; background: var(--bad); color: #fff; font-size: 10.5px; text-align: center; border-radius: 0 0 8px 8px; padding: 2px; }
+  .ph .x { position: absolute; top: 4px; right: 4px; min-width: 26px; height: 26px; border-radius: 13px; border: 0; background: #000a; color: #fff; font-size: 13px; padding: 0 6px; }
+  .ph .x.armed { background: var(--bad); font-size: 11px; }
+  .acts { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
+  .cam { display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--accent); color: #fff; border-radius: 10px; padding: 13px; font-weight: 600; font-size: 16px; }
+  .gal { display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 10px; padding: 0 14px; color: var(--accent); font-size: 14px; }
+  input[type=file] { display: none; }
+  .msg { margin-top: 8px; border-radius: 8px; padding: 9px 10px; font-size: 14px; }
+  .msg.bad { background: var(--badbg); color: var(--bad); }
+  .msg.good { background: var(--soft); color: var(--accent); }
+  .msg.busy { background: #eef1ee; color: var(--muted); }
+  .empty { text-align: center; color: var(--muted); padding: 40px 10px; }
+  .toast { position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); background: #1b2420; color: #fff; border-radius: 10px; padding: 12px 14px; font-size: 14px; z-index: 9; }
+  .err { margin: 30px 16px; background: var(--badbg); color: var(--bad); border-radius: 10px; padding: 14px; }
+</style>
+</head>
+<body>
+<header><h1 id="prj">ФотоОтчёт</h1><div class="sub" id="sub">Загрузка…</div><div class="bar"><i id="barI"></i></div></header>
+<div class="tabs"><button data-f="need" class="on">Нужно снять</button><button data-f="all">Все пункты</button></div>
+<main id="list"></main>
+<div class="toast" id="toast" hidden></div>
+<script>
+(function () {
+  var base = location.pathname.replace(/\/$/, '');
+  var S = { f: 'need', st: null, sig: '', msgs: {}, remarks: {}, picking: 0 };
+  function $(s) { return document.querySelector(s); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function toast(t) { var el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(el._t); el._t = setTimeout(function () { el.hidden = true; }, 3500); }
+  function req(method, url, body, cb) {
+    var x = new XMLHttpRequest(); x.open(method, base + url, true);
+    x.onload = function () { var d = null; try { d = JSON.parse(x.responseText); } catch (e) { } cb(x.status, d); };
+    x.onerror = function () { cb(0, null); };
+    if (body && !(body instanceof FormData)) { x.setRequestHeader('Content-Type', 'application/json'); body = JSON.stringify(body); }
+    x.send(body || null);
+  }
+  function load() {
+    req('GET', '/state', null, function (code, d) {
+      if (code !== 200 || !d) {
+        if (!S.st) $('#list').innerHTML = '<div class="err">' + esc(d && d.detail ? d.detail : 'Нет связи с компьютером в офисе. Проверьте, что телефон в той же сети Wi-Fi, а программа на компьютере открыта.') + '</div>';
+        return;
+      }
+      // новые заметки из офиса
+      d.items.forEach(function (it) {
+        if (S.st && it.remark && S.remarks[it.id] !== it.remark) toast('Заметка из офиса к пункту ' + (it.num || '') + ': ' + it.remark);
+        S.remarks[it.id] = it.remark;
+      });
+      S.st = d;
+      var sig = JSON.stringify([d.items, d.done, S.f, S.msgs]);
+      // пока открыта камера, список не перерисовываем: иначе iOS теряет выбранный кадр
+      if (sig !== S.sig && Date.now() - S.picking > 120000) render();
+    });
+  }
+  function render() {
+    var d = S.st; if (!d) return;
+    S.sig = JSON.stringify([d.items, d.done, S.f, S.msgs]);
+    $('#prj').textContent = d.project || 'ФотоОтчёт';
+    $('#sub').textContent = 'Снято пунктов: ' + d.done + ' из ' + d.total + (d.customer ? ' · ' + d.customer : '');
+    $('#barI').style.width = (d.total ? Math.round(d.done / d.total * 100) : 0) + '%';
+    var list = d.items.filter(function (it) { return S.f === 'all' || it.need; });
+    if (S.f === 'need') list = list.filter(function (it) { return it.urgent; }).concat(list.filter(function (it) { return !it.urgent; }));   // сначала то, что просит офис
+    if (!list.length) { $('#list').innerHTML = '<div class="empty">' + (S.f === 'need' ? 'Всё снято 👍 Офис увидит фото сразу.' : 'Пунктов нет') + '</div>'; return; }
+    $('#list').innerHTML = list.map(function (it) {
+      var redo = it.photos.filter(function (p) { return p.reshoot; }).length;
+      var m = S.msgs[it.id];
+      return '<div class="it' + (it.count && !redo ? ' done' : '') + '" data-id="' + it.id + '">' +
+        '<div class="h"><span class="num">' + esc(it.num) + '</span><span class="t">' + esc(it.title) + '</span>' +
+        (it.count ? '<span class="ok">' + (redo ? '↻ переснять: ' + redo : '✓ фото: ' + it.count) + '</span>' : '') + '</div>' +
+        (it.required ? '<div class="req">Что снять: ' + esc(it.required) + '</div>' : '') +
+        (it.remark ? '<div class="remark"><b>Заметка из офиса</b>' + esc(it.remark) + '</div>' : '') +
+        (it.photos.length ? '<div class="ph">' + it.photos.map(function (p) {
+          return '<div class="p">' + '<img src="' + base + '/photos/' + p.id + '/thumb?v=' + p.v + '" alt="" onerror="this.outerHTML=\'<div class=wait>обработка…</div>\'">' +
+            (p.reshoot ? '<div class="redo">переснять</div>' : '') + '<button class="x" data-del="' + p.id + '" title="Удалить">✕</button></div>';
+        }).join('') + '</div>' : '') +
+        (m ? '<div class="msg ' + m.kind + '">' + esc(m.text) + '</div>' : '') +
+        '<div class="acts"><label class="cam">📷 Снять<input type="file" accept="image/*" capture="environment" data-up="' + it.id + '"></label>' +
+        '<label class="gal">Из галереи<input type="file" accept="image/*" multiple data-up="' + it.id + '"></label></div></div>';
+    }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('input[data-up]'), function (inp) {
+      inp.onclick = function () { S.picking = Date.now(); };
+      inp.onchange = function () {                 // слушатель на самом поле: срабатывает и после перерисовки
+        S.picking = 0;
+        if (!inp.files || !inp.files.length) return;
+        var files = Array.prototype.slice.call(inp.files); inp.value = '';
+        upload(inp.getAttribute('data-up'), files);
+      };
+    });
+  }
+  function upload(iid, files) {
+    var i = 0;
+    function next() {
+      if (i >= files.length) { load(); return; }
+      var f = files[i++];
+      S.msgs[iid] = { kind: 'busy', text: 'Отправляю фото ' + i + (files.length > 1 ? ' из ' + files.length : '') + '…' }; render();
+      var fd = new FormData(); fd.append('file', f, f.name || 'photo.jpg');
+      req('POST', '/items/' + iid + '/photos', fd, function (code, d) {
+        if (code === 200 && d && d.ok) S.msgs[iid] = { kind: 'good', text: d.warning || (d.duplicate ? 'Это фото уже есть' : 'Фото принято ✓') };
+        else S.msgs[iid] = { kind: 'bad', text: (d && (d.reason || d.detail)) || 'Не отправилось — проверьте связь и повторите' };
+        next();
+      });
+    }
+    next();
+  }
+  window.addEventListener('focus', function () { if (S.picking && Date.now() - S.picking > 3000) S.picking = 0; });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-del]') : null;
+    if (b && !b.classList.contains('armed')) {            // первое касание — переспросить, второе — удалить
+      b.classList.add('armed'); b.textContent = 'удалить?';
+      setTimeout(function () { b.classList.remove('armed'); b.textContent = '✕'; }, 3000);
+      return;
+    }
+    if (b) { req('DELETE', '/photos/' + b.dataset.del, null, function (code, d) { if (code !== 200) toast((d && d.detail) || 'Не удалилось'); else toast('Фото удалено'); load(); }); return; }
+    var tb = e.target.closest ? e.target.closest('[data-f]') : null;
+    if (tb) { S.f = tb.dataset.f; Array.prototype.forEach.call(document.querySelectorAll('[data-f]'), function (x) { x.classList.toggle('on', x === tb); }); render(); }
+  });
+  load();
+  setInterval(load, 4000);
+})();
+</script>
+</body>
+</html>

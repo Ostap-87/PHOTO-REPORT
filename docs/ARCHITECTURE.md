@@ -5,10 +5,13 @@
 
 ```
 webui/index.html  ──HTTP──►  app/server.py  ──►  app/store.py      (проекты на диске)
-                                  │                app/pipeline.py   (фоновая обработка фото)
-                                  ├──► app/tz/       разбор ТЗ (docx/pdf/xlsx/csv/txt) -> пункты
+   (127.0.0.1)                    │                app/pipeline.py   (фоновая обработка фото)
+                                  ├──► app/tz/       разбор ТЗ (docx/pdf/xlsx/csv/txt) -> пункты; perfect.py — совершенный вид
+                                  ├──► app/sources.py фото из папки/флешки, ZIP, Яндекс Диска, Google Диска, Dropbox, по ссылке
                                   ├──► app/vision/   фото: чтение, качество, улучшение, лица, эмбеддинги, сортировка, дубли
-                                  └──► app/export/   «ТЗ с фото», отчёт Word / PDF / Excel, ZIP по папкам
+                                  └──► app/export/   «ТЗ с фото», отчёт Word / PDF / Excel / PowerPoint, предпросмотр, ZIP
+webui/field.html  ──HTTP──►  app/field.py (0.0.0.0:8020, только /m/<token>) ──► тот же store и pipeline
+   (телефон)          └── из интернета: cloudflared quick tunnel -> https://….trycloudflare.com
 ```
 
 ## Модуль 1 — ТЗ и исполнение
@@ -31,11 +34,40 @@ webui/index.html  ──HTTP──►  app/server.py  ──►  app/store.py   
 и репозитория, права 600). Фото раскладываются только по строкам, где требуются фото/скриншоты
 (`pipeline.photo_targets`), «что приложить» служит подсказкой для распознавания.
 
+## Совершенный вид (app/tz/perfect.py)
+`perfect(text)` переписывает требование в отчётную форму правилами, без ИИ: словарь «несов. → сов.» глаголов
+(`PERF`, неправильные формы `PAST_IRR`, `PRES_IRR`); 3-е лицо настоящего времени — только после подлежащего
+(«Исполнитель обеспечивает» → «обеспечил»), модальные «должен/должна/обязан/обязуется …ть» — прошедшее время с
+согласованием рода, «должна быть» → «была», инфинитив в начале предложения → мн. ч. («Обеспечить» → «Обеспечили»);
+страдательные обороты не трогаются. Результат — `item.pf_title`, `item.pf_text` (`store.refresh_perfect`, при ручной
+правке `pf_manual = true` — не пересчитывается). Выгрузки берут `title_of/text_of` (`app/export/common.py`); в
+«ТЗ с фото» текст пунктов в исходном .docx переписывается с сохранением оформления (difflib по символам на прогонах `w:t`).
+
 ## Модуль 2 — фото
 Большой массив фото -> чтение (JPG/PNG/HEIC/TIFF/WEBP, поворот по EXIF) -> оценка качества ->
 улучшение где нужно -> (галочка) замазать лица -> эмбеддинг -> раскладка по папкам-пунктам ТЗ
 с уверенностью; неуверенные — в «Неразобранное» с подсказками; исправления пользователя
 улучшают раскладку остальных; дубли и серии почти одинаковых кадров (dHash + сходство CLIP) помечаются.
+
+Источники (`app/sources.py`): `iter_path(path)` — файл, ZIP или папка рекурсивно (имя с подпапкой);
+`download(url, dest, note)` — Яндекс Диск (публичный API `cloud-api.yandex.net/v1/disk/public/resources/download`,
+папка приходит ZIP), Google Диск (файл — `drive.usercontent.google.com/download?…&confirm=t`, папка — разбор
+`embeddedfolderview` с подпапками), Dropbox (`dl=1`), прямая ссылка. `POST /api/projects/{pid}/photos/import`
+(`{path}` или `{url}`) работает в фоне (`job.importing`), фото добавляются партиями по 200. `POST /api/pick-folder` —
+системный выбор папки в окне pywebview.
+
+## Съёмка с телефона (app/field.py)
+Основной сервер слушает только 127.0.0.1. `POST /api/projects/{pid}/field` создаёт секретный токен проекта
+(`project["field"] = {"token", "auto_delete"}`), поднимает второй сервер `field_app` на 0.0.0.0:8020 (один на
+приложение) и отдаёт ссылки по адресам в сети и QR-код (segno, SVG data URI). На нём есть только:
+`GET /m/{token}` (страница `webui/field.html`, ES5 без сборки), `/state` (пункты: что снять, заметка офиса
+`remark`, фото, флаг `need`/`urgent`), `POST /items/{iid}/photos` (кадр -> `quality.analyze`; `reshoot` и
+`auto_delete` — файл удаляется, ответ «переснимите»; иначе фото `source: "field"` подтверждённым кладётся в пункт,
+статус «Выполнено», обработка в pipeline), `DELETE /photos/{phid}` (только `source == "field"`), миниатюры.
+`PATCH …/field` — `auto_delete`, `reset_token` (старая ссылка перестаёт работать). `POST/DELETE …/field/internet` —
+cloudflared quick tunnel (скачивается в папку настроек с GitHub releases при первом включении).
+Пункт снова «нужно снять», если нет фото, есть кадр «переснять» (решение человека `reshoot` важнее
+автооценки `reshoot_auto`) или заметка офиса не старше последнего кадра (`item.remark_at`).
 
 ## Хранение проекта: `storage/projects/<project_id>/`
 ```
@@ -60,7 +92,9 @@ emb.npy, emb_ids.json             эмбеддинги фото (N×D float32, L
   "items": [
     {"id": "it1", "num": "1.2", "level": 2, "title": "Расстановка столов", "text": "полный текст пункта",
      "qty": 12, "unit": "шт", "source": {"kind": "para", "index": 14, "page": null},
-     "status": "todo", "comment": "", "done_at": "", "hint": "", "photo_ids": []}
+     "status": "todo", "comment": "", "done_at": "", "hint": "", "photo_ids": [],
+     "pf_title": "…в совершенном виде", "pf_text": "…", "pf_manual": false, "folder": "", "remark": "", "remark_at": "",
+     "kind": "tz|registry|custom"}
   ],
   "photos": [
     {"id": "ph_3f2a9c", "name": "IMG_0001.HEIC", "ext": ".heic", "sha256": "...", "w": 4032, "h": 3024,
@@ -68,13 +102,17 @@ emb.npy, emb_ids.json             эмбеддинги фото (N×D float32, L
      "quality": {"brightness": 0.31, "contrast": 0.12, "blur": 85.0, "flags": ["dark"], "needs_enhance": true, "reshoot": false},
      "enhanced": true, "applied": ["exposure", "clahe", "sharpen"], "faces": 2, "faces_blurred": true,
      "item_id": "it3", "confidence": 0.81, "suggestions": [["it3", 0.81], ["it5", 0.10]],
-     "confirmed": false, "duplicate_of": null, "status": "ready", "error": ""}
-  ]
+     "confirmed": false, "duplicate_of": null, "status": "ready", "error": "",
+     "reshoot": null, "reshoot_auto": false, "source": "field", "field_at": "2026-10-22 14:32:05"}
+  ],
+  "field": {"token": "секрет ссылки для телефона", "auto_delete": true}
 }
 ```
 - `item.status`: `todo` | `done` (Выполнено) | `provided` (Предоставлено) | `executed` (Исполнено) | `na` (Не требуется).
 - `item.level`: 1 — раздел/пункт верхнего уровня, 2+ — подпункты. Фото можно привязать к любому уровню.
 - `item.hint`: подсказка «что на фото» (заполняет пользователь), усиливает автосортировку.
+- `item.folder` — своё название папки (пусто — «№ название»); `kind: "custom"` — папка, созданная пользователем.
+- `item.remark` — заметка офиса фотографу (видна на телефоне).
 - `photo.item_id = null` — «Неразобранное». `confirmed = true` — положено/подтверждено человеком
   (используется как пример для раскладки остальных). Порядок фото в пункте — `item.photo_ids`.
 
@@ -95,7 +133,12 @@ export_pdf(project: dict, project_dir: str, out_path: str, options: dict) -> str
 export_xlsx(project: dict, project_dir: str, out_path: str) -> str
 export_zip(project: dict, project_dir: str, out_path: str, which: "work"|"original") -> str   # папки «<№> <пункт>/…»
 export_tz_docx(project: dict, project_dir: str, out_path: str, options: dict) -> str   # «ТЗ с фото»
+export_pptx(project: dict, project_dir: str, out_path: str, options: dict) -> str     # 16:9, слайд на пункт, до 6 фото
+render_pptx_preview(project, project_dir, out_dir, options, limit=12) -> [png]       # та же раскладка slides_layout
 ```
+Предпросмотр: `GET /api/projects/{pid}/preview/{fmt}` — PNG слайдов (pptx) или страниц PDF (pdf, docx и xlsx через
+PDF; «ТЗ с фото» — через LibreOffice, если он установлен), картинки — `GET …/preview-img/{fmt}/{name}`.
+Параметр `perfect=true|false` у выгрузок — текст пунктов в совершенном виде или как в ТЗ.
 
 «ТЗ с фото» (`tz_docx.py`): исходный .docx ТЗ; `app.tz.docx_parser.paragraph_refs()` проходит документ тем же
 порядком, что разборщик, поэтому `source.ref` пункта («p12», «t0-r6-p16», «t0-r6») указывает на тот же абзац.

@@ -11,6 +11,7 @@ onnxruntime>=1.17,<1.24; sys_platform == "darwin" and platform_machine == "x86_6
 onnxruntime>=1.17; sys_platform != "darwin" or platform_machine != "x86_64"
 tokenizers>=0.15
 requests>=2.31
+segno>=1.6
 python-docx>=1.1
 openpyxl>=3.1
 python-pptx>=0.6.23

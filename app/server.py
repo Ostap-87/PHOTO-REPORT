@@ -290,6 +290,8 @@ def item_patch(pid: str, iid: str, body: dict = Body(...)):
                     v = "" if v is None else str(v)[:5000]
                 if k in ("hint", "title", "text", "required") and v != it.get(k):
                     reclassify = True
+                if k == "remark" and v != (it.get(k) or ""):
+                    it["remark_at"] = time.strftime("%Y-%m-%d %H:%M:%S")     # телефон: снять заново после заметки
                 it[k] = v
         if "pf_title" in body or "pf_text" in body:          # текст отчёта поправлен руками — не пересчитывать
             it["pf_manual"] = True
@@ -502,6 +504,51 @@ def photos_import(pid: str, body: dict = Body(...)):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)            # скачанное уже скопировано в проект
     return _import_bg(pid, kind, entries)
+
+
+# ------------------------------------------------------------------ съёмка с телефона (app/field.py)
+@app.post("/api/projects/{pid}/field")
+def field_open(pid: str):
+    """Включить съёмку с телефона: ссылка и QR-код (сеть Wi-Fi; из интернета — /field/internet)."""
+    from app import field
+    _load(pid)
+    with store.edit(pid) as prj:
+        field.ensure(prj)
+    return field.links(pid)
+
+
+@app.patch("/api/projects/{pid}/field")
+def field_patch(pid: str, body: dict = Body(...)):
+    """auto_delete — сразу удалять тёмные и смазанные кадры; reset_token — новая ссылка (старая перестаёт работать)."""
+    from app import field
+    _load(pid)
+    with store.edit(pid) as prj:
+        f = field.ensure(prj)
+        if "auto_delete" in body:
+            f["auto_delete"] = bool(body["auto_delete"])
+        if body.get("reset_token"):
+            f["token"] = secrets.token_urlsafe(12)
+    return field.links(pid)
+
+
+@app.post("/api/projects/{pid}/field/internet")
+def field_internet(pid: str):
+    from app import field
+    _load(pid)
+    with store.edit(pid) as prj:
+        field.ensure(prj)
+    try:
+        field.start_tunnel()
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return field.links(pid)
+
+
+@app.delete("/api/projects/{pid}/field/internet")
+def field_internet_stop(pid: str):
+    from app import field
+    field.stop_tunnel()
+    return field.links(pid)
 
 
 @app.post("/api/pick-folder")

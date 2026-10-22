@@ -213,6 +213,21 @@ label.slot:hover { background: var(--accent-soft); }
 .req .t, .note .t { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--accent); display: block; margin-bottom: 1px; }
 .note { background: var(--warn-soft); border-radius: 7px; padding: 6px 10px; font-size: 12.5px; color: var(--ink); }
 .note .t { color: var(--warn); }
+.rmk { display: flex; align-items: center; gap: 8px; }
+.rmk .t { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--warn); white-space: nowrap; }
+.rmk input { flex: 1; min-width: 0; font-size: 13px; height: 32px; }
+.ckrm { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.ckrm input { flex: 1; min-width: 0; font-size: 13px; height: 30px; }
+.ckrm .t { font-size: 12px; color: var(--warn); white-space: nowrap; }
+.ckpw { position: relative; }
+.ckrmadd { display: block; margin-top: 8px; border: 0; background: none; color: var(--warn); font: inherit; font-size: 12px; cursor: pointer; padding: 2px 0; opacity: .8; }
+.ckrmadd:hover { opacity: 1; text-decoration: underline; }
+.ckpw .badges { top: 4px; right: 4px; }
+.fqr { display: flex; gap: 16px; align-items: flex-start; margin: 10px 0; flex-wrap: wrap; }
+.fqr img { width: 190px; height: 190px; border-radius: 8px; background: #fff; border: 1px solid var(--line); }
+.fqr .fl { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 8px; }
+.fqr .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--muted); }
+.dlg .box label.chk input { width: auto; height: auto; }
 .extra { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .extra textarea { width: 100%; font-size: 12.5px; min-height: 32px; height: 32px; }
 .flist { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
@@ -315,7 +330,7 @@ label.slot:hover { background: var(--accent-soft); }
 .card .pick input { width: 15px; height: 15px; accent-color: var(--accent); margin: 0; cursor: pointer; }
 .badges { position: absolute; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
 .badge { font-size: 10.5px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: rgba(15,20,18,.72); color: #fff; white-space: nowrap; }
-.badge.g { background: rgba(29,127,79,.92); } .badge.w { background: rgba(168,101,15,.92); } .badge.r { background: rgba(184,50,42,.92); } .badge.v { background: rgba(115,64,184,.92); }
+.badge.g { background: rgba(29,127,79,.92); } .badge.w { background: rgba(168,101,15,.92); } .badge.r { background: rgba(184,50,42,.92); } .badge.v { background: rgba(115,64,184,.92); } .badge.f { background: rgba(31,95,74,.92); }
 .card .cap { padding: 7px 10px 4px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .card .nm { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .where { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -411,6 +426,7 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
     <button data-tab="report"><b class="stepn">4</b>Документ</button>
   </nav>
   <span class="spacer"></span>
+  <button class="btn sm" id="fieldBtn" hidden title="Съёмка на объекте с телефона: QR-код, заметки фотографу, контроль вживую">📱 Телефон</button>
   <span class="chip" id="jobChip" hidden><span class="dot"></span><span class="t"></span></span>
   <span class="chip" id="modelChip" title="Модель распознавания фото"><span class="dot"></span><span class="t">Модель…</span></span>
   <button class="btn sm ghost" id="aiBtn" title="Анализ ТЗ искусственным интеллектом: ключ API">ИИ: <span id="aiState">…</span></button>
@@ -604,6 +620,32 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
     </div>
   </div>
 </div>
+<div class="dlg" id="fieldDlg" hidden>
+  <div class="box">
+    <h2>Съёмка на объекте с телефона</h2>
+    <p>Наведите камеру телефона на QR-код. На телефоне откроется список пунктов ТЗ: что снять, ваши заметки
+      и кнопка «Снять». Каждый кадр сразу проверяется и попадает в свой пункт, а здесь вы видите съёмку вживую
+      (шаг «3 Проверка») и пишете заметки фотографу.</p>
+    <div class="fqr"><img id="fQr" alt="QR-код ссылки для телефона">
+      <div class="fl">
+        <span class="lbl">Ссылка для телефона</span>
+        <div class="pathbox" id="fUrl">Включаю…</div>
+        <div><button class="btn sm" id="fCopy" type="button">Скопировать ссылку</button></div>
+        <p id="fNet"></p>
+      </div>
+    </div>
+    <label class="chk"><input type="checkbox" id="fAuto"> Сразу удалять тёмные и смазанные кадры и просить переснять</label>
+    <p>Телефон не в одной сети с компьютером? Включите доступ из интернета — бесплатно, через защищённую ссылку
+      Cloudflare. Компьютер должен оставаться включённым, программа — открытой.</p>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" id="fInternet" type="button">Включить доступ из интернета</button><span class="hintline" id="fIntState"></span></div>
+    <p>Если Mac спросит «Разрешить входящие подключения для Python?» — нажмите «Разрешить».</p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap">
+      <button class="btn ghost" id="fReset" type="button" title="Старая ссылка и QR-код перестанут работать">Новая ссылка</button><span class="spacer"></span>
+      <button class="btn" id="fCheck" type="button">Смотреть съёмку</button>
+      <button class="btn primary" id="fClose" type="button">Готово</button>
+    </div>
+  </div>
+</div>
 <div id="dropOverlay" hidden><div>Отпустите, чтобы загрузить</div></div>
 <div id="upl" hidden><div id="uplT"></div><div class="bar"><i id="uplBar" style="width:0"></i></div></div>
 <div id="toast"></div>
@@ -681,7 +723,7 @@ const reshootOf = p => (p.reshoot === true || p.reshoot === false) ? p.reshoot :
 function setHash() { const h = S.pid ? `#${S.pid}/${S.tab}` : '#'; if (location.hash !== h) history.replaceState(null, '', h); }
 function show(view) {
   for (const v of ['viewProjects', 'viewTz', 'viewPhotos', 'viewCheck', 'viewReport']) $('#' + v).hidden = v !== view;
-  $('#tabs').hidden = $('#crumb').hidden = view === 'viewProjects';
+  $('#tabs').hidden = $('#crumb').hidden = $('#fieldBtn').hidden = view === 'viewProjects';
 }
 async function goProjects() {
   S.pid = null; S.prj = null; setHash(); show('viewProjects'); $('#jobChip').hidden = true;
@@ -959,6 +1001,7 @@ function buildItem(it) {
     <div class="qty" hidden></div>
     <div class="req" hidden><span class="t">Что приложить</span><span class="v"></span></div>
     <div class="note" hidden><span class="t">Замечание анализа</span><span class="v"></span></div>
+    <div class="rmk" hidden><span class="t">📱 Заметка фотографу</span><input class="remark" placeholder="Что переснять или доснять — увидит на телефоне"></div>
     <div class="seg">${STATUS.map(([k, l]) => `<button data-st="${k}" class="s-${k}" type="button">${l}</button>`).join('')}</div>
     <div class="row2">
       <textarea class="comment" rows="1" placeholder="Комментарий: что сделано, замечания"></textarea>
@@ -992,6 +1035,8 @@ function buildItem(it) {
   const cm = $('.comment', el), hint = $('.hint', el);
   cm.addEventListener('input', () => { autosize(cm); clearTimeout(cm._t); cm._t = setTimeout(() => patchItem(id, { comment: cm.value, reclassify: false }, cm), 700); });
   hint.addEventListener('change', () => patchItem(id, { hint: hint.value }, hint));
+  const rm = $('.remark', el);
+  rm.addEventListener('change', () => patchItem(id, { remark: rm.value.trim() }, rm));
   const ln = $('.links', el);
   ln.addEventListener('input', () => autosize(ln));
   ln.addEventListener('change', () => patchItem(id, { links: ln.value.split(/\n+/).map(x => x.trim()).filter(Boolean), reclassify: false }, ln));
@@ -1042,7 +1087,7 @@ function toggleEdit(el, id) {
 function autosize(t) { t.style.height = 'auto'; t.style.height = Math.min(160, Math.max(32, t.scrollHeight + 2)) + 'px'; }
 function updateItem(el, it) {
   const lvl = Math.min(4, it.level || 1);
-  const isSection = lvl === 1 && (S.prj.items || []).some(x => (x.level || 1) > 1) && !it.text;
+  const isSection = lvl === 1 && (S.prj.items || []).some(x => (x.level || 1) > 1) && (!it.text || it.text.trim() === (it.title || '').trim());
   el.className = `item lvl-${lvl} st-${it.status}${isSection ? ' section' : ''}`;
   $('.num', el).textContent = it.num || '—';
   $('.ititle', el).textContent = tTitle(it) || 'Без названия';
@@ -1070,6 +1115,9 @@ function updateItem(el, it) {
   const cm = $('.comment', el), hint = $('.hint', el);
   if (document.activeElement !== cm && cm.value !== (it.comment || '')) { cm.value = it.comment || ''; autosize(cm); }
   if (document.activeElement !== hint && hint.value !== (it.hint || '')) hint.value = it.hint || '';
+  const rm = $('.remark', el);
+  $('.rmk', el).hidden = !(S.prj.field || it.remark) || isSection;
+  if (document.activeElement !== rm && rm.value !== (it.remark || '')) rm.value = it.remark || '';
   const ids = it.photo_ids || [];
   const sig = ids.map(id => { const p = photoById(id); return p ? `${id}:${p.ver || 0}:${p.confirmed ? 1 : 0}:${p.status}` : id; }).join('|');
   const strip = $('.strip', el);
@@ -1361,6 +1409,7 @@ function cardHtml(p) {
   else if (p.faces > 0) badges.push(`<span class="badge">лиц: ${p.faces}</span>`);
   if (p.duplicate_of) badges.push(`<span class="badge w">дубль</span>`);
   if (reshootOf(p)) badges.push(`<span class="badge r">переснять</span>`);
+  if (p.source === 'field') badges.push(`<span class="badge f" title="Снято на объекте ${esc(p.field_at || '')}">📱 с телефона</span>`);
   let where;
   if (it) where = p.confirmed ? `<span class="where conf">✓ ${esc(itemLabel(it))}</span>` : `<span class="where auto" title="Разложено автоматически">авто ${pct(p.confidence)} · ${esc(itemLabel(it))}</span>`;
   else where = `<span class="where">Неразобранное</span>`;
@@ -1509,32 +1558,52 @@ async function downloadDoc(fmt, b) {
 let CF = 'all';
 $('#chkFilter').addEventListener('click', e => { const b = e.target.closest('[data-cf]'); if (b) { CF = b.dataset.cf; renderCheck(); } });
 function renderCheck() {
+  const fa = document.activeElement;
+  if (fa && fa.matches && fa.matches('.ckrm input') && $('#chkDoc').contains(fa)) { S.chkLater = true; return; }   // не мешать печатать заметку
+  S.chkLater = false;
   $$('#chkFilter button').forEach(b => b.classList.toggle('on', b.dataset.cf === CF));
   const items = S.prj.items || [];
-  const isSec = it => (it.level || 1) === 1 && items.some(x => (x.level || 1) > 1) && !it.text && !(it.photo_ids || []).length;
+  const isSec = it => (it.level || 1) === 1 && items.some(x => (x.level || 1) > 1) && (!it.text || it.text.trim() === (it.title || '').trim()) && !(it.photo_ids || []).length;
   const withPh = items.filter(it => (it.photo_ids || []).length).length;
   const need = items.filter(it => !isSec(it) && it.status !== 'na');
-  $('#chkInfo').textContent = `пунктов с фото: ${withPh} из ${need.length}`;
+  const fph = (S.prj.photos || []).filter(p => p.source === 'field');
+  const last = fph.map(p => p.field_at || '').sort().pop();
+  $('#chkInfo').textContent = `пунктов с фото: ${withPh} из ${need.length}` + (fph.length ? ` · с телефона: ${fph.length}, последнее в ${last.slice(11, 16)}` : '');
   const list = items.filter(it => CF === 'all' || (CF === 'ph' ? (it.photo_ids || []).length : !isSec(it) && it.status !== 'na' && !(it.photo_ids || []).length));
   const title = (S.prj.tz || {}).title || S.prj.name;
   $('#chkDoc').innerHTML = `<div class="dtitle"><div class="kicker">Отчёт об исполнении</div><h1>${esc(title)}</h1><div class="sub">${esc(S.prj.name)}${S.prj.customer ? ' · ' + esc(S.prj.customer) : ''}</div></div>` +
     (list.length ? list.map(it => {
       const ph = (it.photo_ids || []).map(photoById).filter(Boolean);
       const tt = (it.pf_title || it.title || ''), tx = (it.pf_text || it.text || '');
-      const showTx = tx && tx.trim() !== tt.trim();
+      const bare = x => x.trim().replace(/[.;:,\s]+$/, '');
+      const showTx = tx && bare(tx) !== bare(tt);
       return `<div class="ck l${Math.min(3, it.level || 1)}${isSec(it) ? ' sec' : ''}">
         <div class="ckh"><span class="num">${esc(it.num || '')}</span><span class="ckt">${esc(tt)}</span>${isSec(it) ? '' : `<span class="pill st-${it.status}">${SLABEL[it.status]}${it.done_at && DONE.has(it.status) ? ' · ' + esc(it.done_at) : ''}</span>`}</div>
         ${showTx ? `<div class="ckx">${esc(tx)}</div>` : ''}${it.comment ? `<div class="ckc">${esc(it.comment)}</div>` : ''}
-        ${ph.length ? `<div class="ckp">${ph.map(p => `<img src="${thumbUrl(p)}" data-ck="${p.id}" data-it="${it.id}" loading="lazy" alt="">`).join('')}</div>`
+        ${ph.length ? `<div class="ckp">${ph.map(p => `<span class="ckpw"><img src="${thumbUrl(p)}" data-ck="${p.id}" data-it="${it.id}" loading="lazy" alt=""><span class="badges">${reshootOf(p) ? '<span class="badge r">переснять</span>' : ''}${p.source === 'field' ? '<span class="badge f">📱</span>' : ''}</span></span>`).join('')}</div>`
           : isSec(it) || it.status === 'na' ? '' : `<button class="ckempty" data-ckfolder="${it.id}">Нет фото — добавить в папку «${esc(folderLabel(it))}»</button>`}
+        ${isSec(it) || it.status === 'na' || !(S.prj.field || it.remark) ? ''
+          : it.remark || S.rmOpen === it.id ? `<div class="ckrm"><span class="t">📱 Заметка фотографу</span><input data-rm="${it.id}" value="${esc(it.remark || '')}" placeholder="Например: переснимите со стороны входа, чтобы был виден логотип"></div>`
+          : `<button class="ckrmadd" data-rmadd="${it.id}" type="button">📱 Заметка фотографу</button>`}
       </div>`;
     }).join('') : '<div class="empty">Нет пунктов по фильтру.</div>');
 }
+$('#chkDoc').addEventListener('change', async e => {
+  const r = e.target.closest('[data-rm]'); if (!r) return;
+  await patchItem(r.dataset.rm, { remark: r.value.trim() }, r);
+  toast(r.value.trim() ? 'Заметка отправлена на телефон' : 'Заметка убрана');
+});
+$('#chkDoc').addEventListener('focusout', e => {
+  if (!e.target.closest('[data-rm]')) return;
+  setTimeout(() => { const was = S.rmOpen; S.rmOpen = null; if ((S.chkLater || was) && S.tab === 'check') renderCheck(); }, 300);
+});
 $('#chkDoc').addEventListener('click', e => {
   const im = e.target.closest('[data-ck]');
   if (im) { const it = itemById(im.dataset.it); openViewer(im.dataset.ck, (it.photo_ids || [])); return; }
   const f = e.target.closest('[data-ckfolder]');
-  if (f) { S.folder = f.dataset.ckfolder; setTab('photos'); }
+  if (f) { S.folder = f.dataset.ckfolder; setTab('photos'); return; }
+  const ra = e.target.closest('[data-rmadd]');
+  if (ra) { S.rmOpen = ra.dataset.rmadd; renderCheck(); const inp = $(`[data-rm="${ra.dataset.rmadd}"]`); if (inp) inp.focus(); }
 });
 $('#toFolders').addEventListener('click', async () => {
   const r = await api('POST', `${P()}/export/folders`, { which: $('#rWhich').value, open: true });
@@ -1632,6 +1701,42 @@ function openAi(fromBuild) {
   $('#aiDel').hidden = !(a.configured && a.source === 'settings');
   setTimeout(() => $('#aiKey').focus(), 50);
 }
+// ------------------------------------------------------------------ съёмка с телефона
+function fieldUrl(f) { return f ? (f.internet || (f.urls || [])[0] || '') : ''; }
+function renderField(f) {
+  S.field = f;
+  const url = fieldUrl(f);
+  $('#fQr').hidden = !f.qr; $('#fQr').src = f.qr || '';
+  $('#fUrl').textContent = url || 'Нет сети: подключите компьютер к Wi-Fi или включите доступ из интернета';
+  $('#fNet').textContent = f.internet ? 'Ссылка работает из любой сети, пока компьютер включён и программа открыта.'
+    : 'Телефон должен быть в той же сети Wi-Fi, что и этот компьютер.' + ((f.urls || []).length > 1 ? ` Другие адреса: ${f.urls.slice(1).join(', ')}` : '');
+  $('#fAuto').checked = !!f.auto_delete;
+  $('#fInternet').textContent = f.internet ? 'Выключить доступ из интернета' : 'Включить доступ из интернета';
+  $('#fIntState').textContent = f.internet_error || '';
+}
+async function openField() {
+  $('#fieldDlg').hidden = false; $('#fUrl').textContent = 'Включаю…'; $('#fQr').hidden = true;
+  try { renderField(await api('POST', `${P()}/field`)); await refresh(); } catch (e) { $('#fUrl').textContent = e.message; }
+}
+$('#fieldBtn').addEventListener('click', openField);
+$('#fClose').addEventListener('click', () => { $('#fieldDlg').hidden = true; });
+$('#fCheck').addEventListener('click', () => { $('#fieldDlg').hidden = true; setTab('check'); });
+$('#fieldDlg').addEventListener('keydown', e => { if (e.key === 'Escape') $('#fieldDlg').hidden = true; });
+$('#fAuto').addEventListener('change', async e => renderField(await api('PATCH', `${P()}/field`, { auto_delete: e.target.checked })));
+$('#fReset').addEventListener('click', async () => { renderField(await api('PATCH', `${P()}/field`, { reset_token: true })); toast('Новая ссылка готова — старый QR-код больше не работает'); });
+$('#fCopy').addEventListener('click', () => {
+  const url = fieldUrl(S.field); if (!url) return;
+  const sel = () => { const r = document.createRange(); r.selectNodeContents($('#fUrl')); const w = getSelection(); w.removeAllRanges(); w.addRange(r); };
+  (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => toast('Ссылка скопирована'), () => { sel(); toast('Выделено — нажмите ⌘C'); });
+});
+$('#fInternet').addEventListener('click', async e => {
+  const b = e.currentTarget, on = !!(S.field && S.field.internet);
+  b.disabled = true; b.textContent = on ? 'Выключаю…' : 'Подключаю… (до минуты)';
+  try { renderField(await api(on ? 'DELETE' : 'POST', `${P()}/field/internet`)); }
+  catch (err) { $('#fIntState').textContent = err.message; b.textContent = 'Включить доступ из интернета'; }
+  finally { b.disabled = false; }
+});
+
 $('#aiBtn').addEventListener('click', () => openAi(false));
 $('#aiClose').addEventListener('click', () => { $('#aiDlg').hidden = true; });
 $('#aiSave').addEventListener('click', async () => {
