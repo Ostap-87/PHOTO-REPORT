@@ -60,7 +60,8 @@ cd ~/Documents/PHOTO-REPORT-main && curl -fsSL https://codeload.github.com/Ostap
   | tar -xzf - --strip-components=1 && bash install_mac.command
 ```
 
-При первом запуске приложение само скачает модель распознавания (~230 МБ, один раз, в `~/.cache/photo-report/models`).
+При первом запуске приложение само скачает модель распознавания (~230 МБ, один раз, в `~/.cache/photo-report/models`;
+если huggingface.co недоступен — с зеркала hf-mirror.com, своё зеркало — переменная `HF_ENDPOINT`).
 Проекты хранятся в `~/Documents/ФотоОтчёт/Проекты`. Папку с приложением после установки не переносите.
 
 Если pypi.org отвечает медленно (Китай, часть сетей в России), установщик сам берёт библиотеки с зеркала

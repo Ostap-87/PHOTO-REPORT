@@ -551,7 +551,7 @@ table.rt td.c { text-align: right; font-variant-numeric: tabular-nums; }
 'use strict';
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const STATUS = [['todo', 'Не начато'], ['done', 'Выполнено'], ['provided', 'Предоставлено'], ['executed', 'Исполнено'], ['na', 'Не требуется']];
 const SLABEL = Object.fromEntries(STATUS);
 const DONE = new Set(['done', 'provided', 'executed']);
@@ -949,7 +949,7 @@ function toggleEdit(el, id) {
   box.hidden = !box.hidden;
   if (!box.hidden) {
     $('.e-num', el).value = it.num || ''; $('.e-title', el).value = it.title || ''; $('.e-text', el).value = it.text || '';
-    $('.e-qty', el).value = it.qty ?? ''; $('.e-unit', el).value = it.unit || ''; $('.e-level', el).value = String(Math.min(3, it.level || 1));
+    $('.e-qty', el).value = it.qty == null ? '' : it.qty; $('.e-unit', el).value = it.unit || ''; $('.e-level', el).value = String(Math.min(3, it.level || 1));
     $$('.rg', el).forEach(x => x.hidden = it.kind !== 'registry');
     $('.e-section', el).value = it.section || ''; $('.e-required', el).value = it.required || ''; $('.e-note', el).value = it.note || '';
     $('.e-title', el).focus();

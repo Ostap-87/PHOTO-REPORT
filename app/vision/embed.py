@@ -32,7 +32,11 @@ DIM = 512
 
 IMAGE_REPO = "Xenova/clip-vit-base-patch32"
 TEXT_REPO = "sentence-transformers/clip-ViT-B-32-multilingual-v1"
-HF_URL = "https://huggingface.co/{repo}/resolve/main/{file}"
+HF_URL = "{endpoint}/{repo}/resolve/main/{file}"
+# Откуда качать модели: своё зеркало (HF_ENDPOINT), Hugging Face, затем зеркало hf-mirror.com —
+# huggingface.co в части сетей России и Китая недоступен или очень медленный. Попытки чередуются, докачка общая.
+HF_ENDPOINTS = tuple(dict.fromkeys(e.rstrip("/") for e in (
+    os.environ.get("HF_ENDPOINT", ""), "https://huggingface.co", "https://hf-mirror.com") if e))
 
 # Препроцессинг CLIP (preprocessor_config.json модели): короткая сторона 224 (bicubic),
 # центральный кроп 224×224, деление на 255, нормализация.
@@ -266,9 +270,9 @@ class Embedder:
         """Скачивает один файл в dst.part с докачкой (Range), проверяет размер, переименовывает."""
         dst.parent.mkdir(parents=True, exist_ok=True)
         part = dst.with_name(dst.name + ".part")
-        url = HF_URL.format(repo=repo, file=file)
         last_err: Exception | None = None
-        for attempt in range(4):
+        for attempt in range(3 * len(HF_ENDPOINTS)):
+            url = HF_URL.format(endpoint=HF_ENDPOINTS[attempt % len(HF_ENDPOINTS)], repo=repo, file=file)
             have = part.stat().st_size if part.exists() else 0
             headers = {"Range": f"bytes={have}-"} if have else {}
             try:
@@ -306,7 +310,7 @@ class Embedder:
                 return size
             except Exception as e:  # noqa: BLE001
                 last_err = e
-                time.sleep(min(8, 1 + attempt * 2))
+                time.sleep(min(8, 1 + attempt))
         raise IOError(f"{repo}/{file}: {last_err}")
 
     # ---------- сессии ----------
